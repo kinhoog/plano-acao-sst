@@ -83,6 +83,7 @@ Para restaurar, use `Importar JSON`. Essa ação substitui os dados atuais após
 
 ## Créditos
 
-Idealização e estrutura inicial: Abner Rodrigues
-Evolução, testes e especificações adicionais: Erick Rocha
-Desenvolvimento assistido por IA: Codex / OpenAI
+- Idealização e estrutura inicial: Abner Rodrigues
+- Evolução, testes e especificações adicionais: Erick Rocha
+  
+- Desenvolvimento assistido por IA: Codex / OpenAI
