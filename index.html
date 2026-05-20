@@ -4634,18 +4634,15 @@
         if (!isRecovery) {
           const email = currentUser && currentUser.email ? currentUser.email : "";
           if (!email) return setPasswordMessage("Não foi possível identificar o e-mail do usuário conectado.", "error");
-          const verifierClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-            auth: {
-              persistSession: false,
-              autoRefreshToken: false,
-              detectSessionInUrl: false
-            }
-          });
-          const { error: verifyError } = await verifierClient.auth.signInWithPassword({ email, password: currentPassword });
-          await verifierClient.auth.signOut();
+          const { data: verifyData, error: verifyError } = await supabaseClient.auth.signInWithPassword({ email, password: currentPassword });
           if (verifyError) return setPasswordMessage("Senha atual incorreta.", "error");
+          if (!verifyData.user || verifyData.user.id !== currentUser.id) {
+            return setPasswordMessage("A senha atual não pertence ao usuário conectado.", "error");
+          }
+          currentUser = verifyData.user;
         }
-        const { error } = await supabaseClient.auth.updateUser({ password });
+        const updatePayload = isRecovery ? { password } : { password, currentPassword };
+        const { error } = await supabaseClient.auth.updateUser(updatePayload);
         if (error) return setPasswordMessage(error.message, "error");
         recordActivity("Alterou senha", "Senha do usuário conectado foi alterada.");
         setPasswordMessage("Senha alterada com sucesso.", "ok");
