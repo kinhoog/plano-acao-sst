@@ -791,6 +791,70 @@
       min-width: 0;
     }
 
+    .password-control {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .password-control input {
+      padding-right: 44px;
+    }
+
+    .password-toggle {
+      position: absolute;
+      right: 7px;
+      width: 32px;
+      height: 32px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    }
+
+    .password-toggle:hover {
+      background: var(--surface-soft);
+      border-color: var(--line);
+      color: var(--text);
+    }
+
+    .password-toggle svg {
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      transition: opacity 0.18s ease, transform 0.18s ease;
+    }
+
+    .password-toggle .eye-open {
+      opacity: 0;
+      transform: scale(0.72) rotate(-8deg);
+    }
+
+    .password-toggle .eye-closed {
+      opacity: 1;
+      transform: scale(1) rotate(0deg);
+    }
+
+    .password-toggle.is-visible .eye-open {
+      opacity: 1;
+      transform: scale(1) rotate(0deg);
+    }
+
+    .password-toggle.is-visible .eye-closed {
+      opacity: 0;
+      transform: scale(0.72) rotate(8deg);
+    }
+
     label.field input:focus,
     label.field select:focus,
     .table-input:focus,
@@ -2510,6 +2574,7 @@
     html[data-theme="dark"] .plan-actions select,
     html[data-theme="dark"] label.field input,
     html[data-theme="dark"] label.field select,
+    html[data-theme="dark"] .password-toggle,
     html[data-theme="dark"] .toolbar input,
     html[data-theme="dark"] .toolbar select,
     html[data-theme="dark"] .bulkbar select,
@@ -3365,7 +3430,13 @@
           </label>
           <label class="field">
             Senha
-            <input type="password" id="authPassword" autocomplete="current-password" required minlength="6" placeholder="Mínimo 6 caracteres">
+            <span class="password-control">
+              <input type="password" id="authPassword" autocomplete="current-password" required minlength="6" placeholder="Mínimo 6 caracteres">
+              <button class="password-toggle" type="button" data-toggle-password="authPassword" aria-label="Mostrar senha" title="Mostrar senha">
+                <svg class="eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15c2.2-2.4 4.9-3.6 8-3.6s5.8 1.2 8 3.6"/><path d="M7 18l1.2-2.1"/><path d="M12 19v-2.5"/><path d="M17 18l-1.2-2.1"/></svg>
+                <svg class="eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </span>
           </label>
           <div class="auth-actions">
             <button class="button primary" type="submit" id="authLoginBtn">Entrar</button>
@@ -3772,24 +3843,39 @@
           <strong>Usuário conectado</strong>
           <span id="settingsUserEmail">-</span>
         </div>
-        <button class="button" type="button" id="settingsChangePasswordBtn">Alterar senha</button>
+        <button class="button" type="button" id="settingsChangePasswordBtn">Alterar Senha</button>
+        <button class="button" type="button" id="settingsLogBtn">Consultar Log</button>
         <button class="button danger" type="button" id="settingsLogoutBtn">
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5c0-1.1.9-2 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
           Sair do sistema
         </button>
-        <div class="activity-log-panel">
-          <div class="activity-log-head">
-            <div>
-              <h3>Histórico de atividades</h3>
-              <span>Últimos registros sincronizados</span>
-            </div>
-            <button class="button" type="button" id="refreshLogBtn">Atualizar</button>
-          </div>
-          <div class="activity-log-list" id="activityLogList"></div>
-        </div>
       </div>
       <div class="modal-actions">
         <button class="button" type="button" data-close-modal="settingsModal">Fechar</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="modal hidden" id="logModal" aria-modal="true" role="dialog">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2>Log de exclusões</h2>
+        <button class="button icon-only" type="button" data-close-modal="logModal" aria-label="Fechar">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="activity-log-panel">
+        <div class="activity-log-head">
+          <div>
+            <h3>Exclusões registradas</h3>
+            <span>Mostra quem apagou perfil, pasta ou plano de ação.</span>
+          </div>
+          <button class="button" type="button" id="refreshLogBtn">Atualizar</button>
+        </div>
+        <div class="activity-log-list" id="activityLogList"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="button" type="button" data-close-modal="logModal">Fechar</button>
       </div>
     </div>
   </section>
@@ -3869,11 +3955,32 @@
         </button>
       </div>
       <form class="modal-form" id="passwordForm">
+        <label class="field" id="currentPasswordField">Confirmar senha atual
+          <span class="password-control">
+            <input type="password" id="currentPasswordInput" autocomplete="current-password" placeholder="Digite sua senha atual">
+            <button class="password-toggle" type="button" data-toggle-password="currentPasswordInput" aria-label="Mostrar senha atual" title="Mostrar senha">
+              <svg class="eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15c2.2-2.4 4.9-3.6 8-3.6s5.8 1.2 8 3.6"/><path d="M7 18l1.2-2.1"/><path d="M12 19v-2.5"/><path d="M17 18l-1.2-2.1"/></svg>
+              <svg class="eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </span>
+        </label>
         <label class="field">Nova senha
-          <input type="password" id="newPasswordInput" required minlength="6" autocomplete="new-password" placeholder="Mínimo 6 caracteres">
+          <span class="password-control">
+            <input type="password" id="newPasswordInput" required minlength="6" autocomplete="new-password" placeholder="Mínimo 6 caracteres">
+            <button class="password-toggle" type="button" data-toggle-password="newPasswordInput" aria-label="Mostrar nova senha" title="Mostrar senha">
+              <svg class="eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15c2.2-2.4 4.9-3.6 8-3.6s5.8 1.2 8 3.6"/><path d="M7 18l1.2-2.1"/><path d="M12 19v-2.5"/><path d="M17 18l-1.2-2.1"/></svg>
+              <svg class="eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </span>
         </label>
         <label class="field">Confirmar nova senha
-          <input type="password" id="confirmPasswordInput" required minlength="6" autocomplete="new-password" placeholder="Repita a nova senha">
+          <span class="password-control">
+            <input type="password" id="confirmPasswordInput" required minlength="6" autocomplete="new-password" placeholder="Repita a nova senha">
+            <button class="password-toggle" type="button" data-toggle-password="confirmPasswordInput" aria-label="Mostrar confirmação da nova senha" title="Mostrar senha">
+              <svg class="eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15c2.2-2.4 4.9-3.6 8-3.6s5.8 1.2 8 3.6"/><path d="M7 18l1.2-2.1"/><path d="M12 19v-2.5"/><path d="M17 18l-1.2-2.1"/></svg>
+              <svg class="eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </span>
         </label>
         <div class="auth-message" id="passwordMessage"></div>
         <div class="modal-actions">
@@ -3948,6 +4055,7 @@
       const THEME_KEY = "planoDeAcaoSST.theme.v1";
       const THEME_USER_PREFIX = "planoDeAcaoSST.theme.user.";
       const MAX_ACTIVITY_LOG = 500;
+      const LOGGED_ACTIVITY_ACTIONS = new Set(["Excluiu perfil", "Excluiu pasta", "Excluiu plano"]);
       const DEFAULT_FOLDER_ID = "default-folder";
       const PRIORITIES = ["Alta", "Média", "Baixa"];
       const STATUSES = ["Não iniciado", "Em andamento", "Concluído", "Cancelado"];
@@ -3964,6 +4072,7 @@
       let saveTimer = null;
       let authRedirectMessage = "";
       let pendingPasswordRecovery = false;
+      let passwordRecoveryMode = false;
       let teamProfiles = [];
       let pendingProtectedAction = null;
       let syncTimer = null;
@@ -3974,6 +4083,9 @@
       let isSavingCloud = false;
       let dirtyProfileIds = new Set();
       let pendingProfileDeletes = new Set();
+      let pendingPlanDeletes = new Set();
+      let pendingFolderDeletes = new Set();
+      let pendingRowDeletes = new Set();
       let pendingHiddenAdds = new Set();
       let pendingHiddenRemoves = new Set();
       let pendingFullSave = false;
@@ -4109,8 +4221,10 @@
       }
 
       function recordActivity(action, detail = "", context = {}) {
+        if (!LOGGED_ACTIVITY_ACTIONS.has(action)) return null;
         if (!app || !Array.isArray(app.activityLog)) app.activityLog = [];
-        const profile = context.profile || currentProfile() || currentUserOwnProfile() || null;
+        const targetProfile = context.profile || currentProfile() || null;
+        const actorProfile = currentUserOwnProfile();
         const plan = context.plan || currentPlan() || null;
         const entry = {
           id: createId(),
@@ -4119,25 +4233,28 @@
           detail,
           userId: currentUser ? currentUser.id : "",
           userEmail: currentUser ? currentUser.email || "" : "",
-          userName: profile ? profile.name || "" : "",
-          profileId: profile ? profile.id || "" : "",
-          profileName: profile ? profile.name || "" : "",
+          userName: actorProfile ? actorProfile.name || "" : "",
+          profileId: targetProfile ? targetProfile.id || "" : "",
+          profileName: targetProfile ? targetProfile.name || "" : "",
           planId: plan ? plan.id || "" : context.planId || "",
           planTitle: plan ? plan.title || "" : context.planTitle || ""
         };
         app.activityLog.unshift(entry);
         app.activityLog = normalizeActivityLog(app.activityLog);
         saveApp({ activityId: entry.id });
-        if (!document.getElementById("settingsModal").classList.contains("hidden")) renderActivityLog();
+        const logModal = document.getElementById("logModal");
+        if (logModal && !logModal.classList.contains("hidden")) renderActivityLog();
         return entry;
       }
 
       function renderActivityLog() {
         const list = document.getElementById("activityLogList");
         if (!list) return;
-        const entries = normalizeActivityLog(app.activityLog || []).slice(0, 120);
+        const entries = normalizeActivityLog(app.activityLog || [])
+          .filter(entry => LOGGED_ACTIVITY_ACTIONS.has(entry.action))
+          .slice(0, 120);
         if (!entries.length) {
-          list.innerHTML = '<div class="empty-state">Nenhuma atividade registrada ainda.</div>';
+          list.innerHTML = '<div class="empty-state">Nenhuma exclusão registrada ainda.</div>';
           return;
         }
         list.innerHTML = entries.map(entry => `
@@ -4151,6 +4268,7 @@
       }
 
       function activityActor(entry) {
+        if (entry.userName && entry.userEmail) return `${entry.userName} (${entry.userEmail})`;
         return entry.userName || entry.userEmail || "Usuário";
       }
 
@@ -4162,11 +4280,20 @@
           closeModal("settingsModal");
           openPasswordModal();
         });
+        document.getElementById("settingsLogBtn").addEventListener("click", async () => {
+          closeModal("settingsModal");
+          await syncSharedStateFromCloud({ force: true, allowWhileEditing: true });
+          renderActivityLog();
+          openModal("logModal");
+        });
         document.getElementById("settingsLogoutBtn").addEventListener("click", () => {
           closeModal("settingsModal");
           logout();
         });
         document.getElementById("passwordForm").addEventListener("submit", handlePasswordChange);
+        document.querySelectorAll("[data-toggle-password]").forEach(button => {
+          button.addEventListener("click", togglePasswordVisibility);
+        });
         document.getElementById("switchUserForm").addEventListener("submit", handleSwitchUserLogin);
         if (els.themeToggleBtn) els.themeToggleBtn.addEventListener("click", toggleThemePreference);
         document.getElementById("logoutBtn").addEventListener("click", logout);
@@ -4299,7 +4426,7 @@
             pendingPasswordRecovery = true;
             if (session && session.user) {
               hydrateUser(session.user).then(() => {
-                openPasswordModal();
+                openPasswordModal({ recovery: true });
                 setPasswordMessage("Digite uma nova senha para concluir a redefinição.", "");
               });
             }
@@ -4395,7 +4522,7 @@
           setAuthMessage(`Conectado como ${user.email || "usuário"}.`, "ok");
           if (pendingPasswordRecovery) {
             pendingPasswordRecovery = false;
-            openPasswordModal();
+            openPasswordModal({ recovery: true });
             setPasswordMessage("Digite uma nova senha para concluir a redefinição.", "");
           }
         } catch (error) {
@@ -4407,7 +4534,7 @@
           setAuthMessage("Login aceito, mas o banco compartilhado não abriu. Verifique a tabela shared_states, as políticas RLS e a conexão antes de usar.", "error");
           if (pendingPasswordRecovery) {
             pendingPasswordRecovery = false;
-            openPasswordModal();
+            openPasswordModal({ recovery: true });
             setPasswordMessage("Digite uma nova senha para concluir a redefinição.", "");
           }
         }
@@ -4459,22 +4586,65 @@
         openModal("settingsModal");
       }
 
-      function openPasswordModal() {
+      function openPasswordModal(options = {}) {
+        passwordRecoveryMode = !!options.recovery;
+        const currentField = document.getElementById("currentPasswordField");
+        const currentInput = document.getElementById("currentPasswordInput");
+        document.getElementById("passwordForm").dataset.mode = passwordRecoveryMode ? "recovery" : "change";
+        currentField.classList.toggle("hidden", passwordRecoveryMode);
+        currentInput.required = !passwordRecoveryMode;
+        currentInput.value = "";
         document.getElementById("newPasswordInput").value = "";
         document.getElementById("confirmPasswordInput").value = "";
+        document.querySelectorAll("[data-toggle-password]").forEach(button => {
+          const input = document.getElementById(button.dataset.togglePassword);
+          if (input) input.type = "password";
+          button.classList.remove("is-visible");
+          button.setAttribute("aria-pressed", "false");
+          button.title = "Mostrar senha";
+        });
         setPasswordMessage("", "");
         openModal("passwordModal");
-        setTimeout(() => document.getElementById("newPasswordInput").focus(), 30);
+        setTimeout(() => document.getElementById(passwordRecoveryMode ? "newPasswordInput" : "currentPasswordInput").focus(), 30);
+      }
+
+      function togglePasswordVisibility(event) {
+        const button = event.currentTarget;
+        const input = document.getElementById(button.dataset.togglePassword);
+        if (!input) return;
+        const show = input.type === "password";
+        input.type = show ? "text" : "password";
+        button.classList.toggle("is-visible", show);
+        button.setAttribute("aria-pressed", String(show));
+        button.title = show ? "Ocultar senha" : "Mostrar senha";
+        button.setAttribute("aria-label", show ? "Ocultar senha" : "Mostrar senha");
       }
 
       async function handlePasswordChange(event) {
         event.preventDefault();
         if (!supabaseClient) return setPasswordMessage("Supabase não carregou. Atualize a página.", "error");
+        const currentPassword = document.getElementById("currentPasswordInput").value;
         const password = document.getElementById("newPasswordInput").value;
         const confirmPassword = document.getElementById("confirmPasswordInput").value;
+        const isRecovery = document.getElementById("passwordForm").dataset.mode === "recovery" || passwordRecoveryMode;
+        if (!isRecovery && !currentPassword) return setPasswordMessage("Confirme sua senha atual.", "error");
         if (password.length < 6) return setPasswordMessage("A senha precisa ter pelo menos 6 caracteres.", "error");
         if (password !== confirmPassword) return setPasswordMessage("As senhas não conferem.", "error");
         setPasswordMessage("Atualizando senha...", "");
+        if (!isRecovery) {
+          const email = currentUser && currentUser.email ? currentUser.email : "";
+          if (!email) return setPasswordMessage("Não foi possível identificar o e-mail do usuário conectado.", "error");
+          const verifierClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+            auth: {
+              persistSession: false,
+              autoRefreshToken: false,
+              detectSessionInUrl: false
+            }
+          });
+          const { error: verifyError } = await verifierClient.auth.signInWithPassword({ email, password: currentPassword });
+          await verifierClient.auth.signOut();
+          if (verifyError) return setPasswordMessage("Senha atual incorreta.", "error");
+        }
         const { error } = await supabaseClient.auth.updateUser({ password });
         if (error) return setPasswordMessage(error.message, "error");
         recordActivity("Alterou senha", "Senha do usuário conectado foi alterada.");
@@ -4881,6 +5051,7 @@
             planId: entry.planId || "",
             planTitle: entry.planTitle || ""
           }))
+          .filter(entry => LOGGED_ACTIVITY_ACTIONS.has(entry.action))
           .sort((a, b) => String(b.at).localeCompare(String(a.at)))
           .slice(0, MAX_ACTIVITY_LOG);
       }
@@ -5697,7 +5868,7 @@
         profile.folders = profile.folders.filter(item => item.id !== folderId);
         if (app.activeFolderId === folderId) app.activeFolderId = DEFAULT_FOLDER_ID;
         recordActivity("Excluiu pasta", `Excluiu a pasta ${folder.name}; planos movidos para Sem pasta.`, { profile });
-        saveApp();
+        saveApp({ deleteFolderId: folderId });
         renderFoldersScreen();
       }
 
@@ -5765,7 +5936,7 @@
           if (!confirm("Excluir este plano de ação?")) return;
           recordActivity("Excluiu plano", `Excluiu o plano ${plan.title}.`, { profile, plan });
           profile.plans = profile.plans.filter(item => item.id !== plan.id);
-          saveApp();
+          saveApp({ deletePlanId: plan.id });
           renderFoldersScreen();
         }
       }
@@ -6124,7 +6295,7 @@
         selectedActions.delete(id);
         touchPlan(currentPlan());
         recordActivity("Excluiu linha", `Excluiu ${label} do plano ${currentPlan().title}.`, { plan: currentPlan() });
-        saveApp();
+        saveApp({ rowDelete: { section, rowId: id } });
         renderEditorTables();
       }
 
@@ -6202,11 +6373,12 @@
       function deleteSelectedActions() {
         if (!selectedActions.size) return;
         if (!confirm(`Excluir ${selectedActions.size} ações selecionadas? Esta ação não pode ser desfeita.`)) return;
+        const rowDeletes = Array.from(selectedActions).map(rowId => ({ section: "actions", rowId }));
         recordActivity("Excluiu ações em lote", `Excluiu ${selectedActions.size} ação(ões) selecionadas no plano ${currentPlan().title}.`, { plan: currentPlan() });
         currentPlanData().actions = currentPlanData().actions.filter(row => !selectedActions.has(row.id));
         selectedActions.clear();
         touchPlan(currentPlan());
-        saveApp();
+        saveApp({ rowDeletes });
         renderEditorTables();
       }
 
@@ -7128,6 +7300,16 @@
         if (plan) plan.updatedAt = new Date().toISOString();
       }
 
+      function rowDeleteKey(info) {
+        if (!info) return "";
+        return [info.profileId || app.activeProfileId || "", info.planId || app.activePlanId || "", info.section || "", info.rowId || info.id || ""].join("|");
+      }
+
+      function parseRowDeleteKey(key) {
+        const [profileId, planId, section, rowId] = String(key || "").split("|");
+        return { profileId, planId, section, rowId };
+      }
+
       function saveApp(options = {}) {
         const key = currentUser ? SHARED_STORAGE_KEY : STORAGE_KEY;
         localStorage.setItem(key, JSON.stringify(app));
@@ -7135,10 +7317,31 @@
         if (!options.localOnly) {
           if (options.fullSave) pendingFullSave = true;
           if (options.deleteProfileId) pendingProfileDeletes.add(options.deleteProfileId);
+          if (options.deletePlanId) pendingPlanDeletes.add(options.deletePlanId);
+          if (options.deleteFolderId) pendingFolderDeletes.add(options.deleteFolderId);
+          if (options.activityId) pendingActivityIds.add(options.activityId);
+          if (options.rowDelete) {
+            const key = rowDeleteKey(options.rowDelete);
+            if (key) pendingRowDeletes.add(key);
+          }
+          if (Array.isArray(options.rowDeletes)) options.rowDeletes.forEach(rowDelete => {
+            const key = rowDeleteKey(rowDelete);
+            if (key) pendingRowDeletes.add(key);
+          });
           if (options.hiddenAdd) pendingHiddenAdds.add(options.hiddenAdd);
           if (options.hiddenRemove) pendingHiddenRemoves.add(options.hiddenRemove);
           if (options.profileId) dirtyProfileIds.add(options.profileId);
-          if (!options.fullSave && !options.deleteProfileId && !options.profileId && app.activeProfileId) {
+          const pureActivitySave = options.activityId
+            && !options.fullSave
+            && !options.deleteProfileId
+            && !options.deletePlanId
+            && !options.deleteFolderId
+            && !options.rowDelete
+            && !options.rowDeletes
+            && !options.profileId
+            && !options.hiddenAdd
+            && !options.hiddenRemove;
+          if (!options.fullSave && !options.deleteProfileId && !options.profileId && !pureActivitySave && app.activeProfileId) {
             dirtyProfileIds.add(app.activeProfileId);
           }
         }
@@ -7150,6 +7353,10 @@
         return pendingFullSave
           || dirtyProfileIds.size > 0
           || pendingProfileDeletes.size > 0
+          || pendingPlanDeletes.size > 0
+          || pendingFolderDeletes.size > 0
+          || pendingRowDeletes.size > 0
+          || pendingActivityIds.size > 0
           || pendingHiddenAdds.size > 0
           || pendingHiddenRemoves.size > 0;
       }
@@ -7159,6 +7366,10 @@
           fullSave: pendingFullSave,
           profileIds: Array.from(dirtyProfileIds),
           deletedProfileIds: Array.from(pendingProfileDeletes),
+          deletedPlanIds: Array.from(pendingPlanDeletes),
+          deletedFolderIds: Array.from(pendingFolderDeletes),
+          deletedRows: Array.from(pendingRowDeletes),
+          activityIds: Array.from(pendingActivityIds),
           hiddenAdds: Array.from(pendingHiddenAdds),
           hiddenRemoves: Array.from(pendingHiddenRemoves)
         };
@@ -7168,6 +7379,10 @@
         if (snapshot.fullSave) pendingFullSave = false;
         snapshot.profileIds.forEach(id => dirtyProfileIds.delete(id));
         snapshot.deletedProfileIds.forEach(id => pendingProfileDeletes.delete(id));
+        snapshot.deletedPlanIds.forEach(id => pendingPlanDeletes.delete(id));
+        snapshot.deletedFolderIds.forEach(id => pendingFolderDeletes.delete(id));
+        snapshot.deletedRows.forEach(key => pendingRowDeletes.delete(key));
+        snapshot.activityIds.forEach(id => pendingActivityIds.delete(id));
         snapshot.hiddenAdds.forEach(id => pendingHiddenAdds.delete(id));
         snapshot.hiddenRemoves.forEach(id => pendingHiddenRemoves.delete(id));
       }
@@ -7176,6 +7391,10 @@
         if (snapshot.fullSave) pendingFullSave = true;
         snapshot.profileIds.forEach(id => dirtyProfileIds.add(id));
         snapshot.deletedProfileIds.forEach(id => pendingProfileDeletes.add(id));
+        snapshot.deletedPlanIds.forEach(id => pendingPlanDeletes.add(id));
+        snapshot.deletedFolderIds.forEach(id => pendingFolderDeletes.add(id));
+        snapshot.deletedRows.forEach(key => pendingRowDeletes.add(key));
+        snapshot.activityIds.forEach(id => pendingActivityIds.add(id));
         snapshot.hiddenAdds.forEach(id => pendingHiddenAdds.add(id));
         snapshot.hiddenRemoves.forEach(id => pendingHiddenRemoves.add(id));
       }
@@ -7205,6 +7424,10 @@
         if (!snapshot.fullSave
           && !snapshot.profileIds.length
           && !snapshot.deletedProfileIds.length
+          && !snapshot.deletedPlanIds.length
+          && !snapshot.deletedFolderIds.length
+          && !snapshot.deletedRows.length
+          && !snapshot.activityIds.length
           && !snapshot.hiddenAdds.length
           && !snapshot.hiddenRemoves.length) return;
         isSavingCloud = true;
@@ -7253,6 +7476,9 @@
         if (error) throw error;
         const latest = data && data.data ? normalizeApp(data.data) : createEmptyApp();
         const deleteIds = new Set(snapshot.deletedProfileIds.filter(Boolean));
+        const deletedPlanIds = new Set((snapshot.deletedPlanIds || []).filter(Boolean));
+        const deletedFolderIds = new Set((snapshot.deletedFolderIds || []).filter(Boolean));
+        const deletedRows = (snapshot.deletedRows || []).filter(Boolean).map(parseRowDeleteKey);
         const hiddenAddSet = new Set(snapshot.hiddenAdds.filter(Boolean));
 
         snapshot.hiddenRemoves.filter(Boolean).forEach(userId => {
@@ -7268,20 +7494,175 @@
           return true;
         });
 
+        latest.profiles.forEach(profile => applyDeleteSnapshotToProfile(profile, deletedFolderIds, deletedPlanIds, deletedRows));
+
         snapshot.profileIds.filter(Boolean).forEach(profileId => {
           if (deleteIds.has(profileId)) return;
           const localProfile = app.profiles.find(profile => profile.id === profileId || profile.userId === profileId);
           if (!localProfile) return;
-          const profile = normalizeProfile(deepClone(localProfile));
-          if (profile.userId) {
-            latest.hiddenUserProfileIds = latest.hiddenUserProfileIds.filter(userId => userId !== profile.userId);
+          const local = normalizeProfile(deepClone(localProfile));
+          if (local.userId) {
+            latest.hiddenUserProfileIds = latest.hiddenUserProfileIds.filter(userId => userId !== local.userId);
           }
-          const index = latest.profiles.findIndex(item => item.id === profile.id || (profile.userId && item.userId === profile.userId));
-          if (index >= 0) latest.profiles[index] = profile;
-          else latest.profiles.push(profile);
+          const index = latest.profiles.findIndex(item => item.id === local.id || (local.userId && item.userId === local.userId));
+          const remote = index >= 0 ? latest.profiles[index] : null;
+          const mergedProfile = mergeProfileForCloud(remote, local, { deletedFolderIds, deletedPlanIds, deletedRows });
+          if (index >= 0) latest.profiles[index] = mergedProfile;
+          else latest.profiles.push(mergedProfile);
         });
 
+        if (snapshot.activityIds && snapshot.activityIds.length) {
+          const activityIds = new Set(snapshot.activityIds);
+          latest.activityLog = mergeActivityLogs(latest.activityLog, app.activityLog.filter(entry => activityIds.has(entry.id)));
+        }
+
         return sharedAppData(latest);
+      }
+
+      function applyDeleteSnapshotToProfile(profile, deletedFolderIds, deletedPlanIds, deletedRows) {
+        if (!profile) return;
+        if (deletedFolderIds.size) {
+          profile.folders = profile.folders.filter(folder => folder.isDefault || !deletedFolderIds.has(folder.id));
+          profile.plans.forEach(plan => {
+            if (deletedFolderIds.has(plan.folderId)) {
+              plan.folderId = DEFAULT_FOLDER_ID;
+              touchPlan(plan);
+            }
+          });
+        }
+        if (deletedPlanIds.size) {
+          profile.plans = profile.plans.filter(plan => !deletedPlanIds.has(plan.id));
+        }
+        deletedRows.forEach(info => {
+          if (info.profileId && info.profileId !== profile.id && info.profileId !== profile.userId) return;
+          const plan = profile.plans.find(item => item.id === info.planId);
+          if (!plan || !plan.data || !Array.isArray(plan.data[info.section])) return;
+          plan.data[info.section] = plan.data[info.section].filter(row => row.id !== info.rowId);
+          touchPlan(plan);
+        });
+      }
+
+      function mergeProfileForCloud(remoteProfile, localProfile, options = {}) {
+        const local = normalizeProfile(deepClone(localProfile));
+        const remote = remoteProfile ? normalizeProfile(deepClone(remoteProfile)) : null;
+        if (!remote) {
+          applyDeleteSnapshotToProfile(local, options.deletedFolderIds || new Set(), options.deletedPlanIds || new Set(), options.deletedRows || []);
+          return local;
+        }
+
+        const merged = normalizeProfile({
+          ...remote,
+          name: local.name,
+          role: local.role,
+          company: local.company,
+          email: local.email,
+          avatarColor: local.avatarColor,
+          avatarPhoto: local.avatarPhoto,
+          lastAccess: isSameOrNewer(local.lastAccess, remote.lastAccess) ? local.lastAccess : remote.lastAccess,
+          createdAt: remote.createdAt || local.createdAt,
+          folders: mergeFoldersForCloud(remote.folders, local.folders, options.deletedFolderIds || new Set()),
+          plans: mergePlansForCloud(remote.plans, local.plans, {
+            deletedPlanIds: options.deletedPlanIds || new Set(),
+            deletedFolderIds: options.deletedFolderIds || new Set(),
+            deletedRows: options.deletedRows || [],
+            profileId: local.id
+          })
+        });
+        applyDeleteSnapshotToProfile(merged, options.deletedFolderIds || new Set(), options.deletedPlanIds || new Set(), options.deletedRows || []);
+        return merged;
+      }
+
+      function mergeFoldersForCloud(remoteFolders, localFolders, deletedFolderIds) {
+        const map = new Map();
+        normalizeProfile({ folders: remoteFolders || [], plans: [] }).folders.forEach(folder => {
+          if (folder.isDefault || !deletedFolderIds.has(folder.id)) map.set(folder.id, folder);
+        });
+        normalizeProfile({ folders: localFolders || [], plans: [] }).folders.forEach(folder => {
+          if (!folder.isDefault && deletedFolderIds.has(folder.id)) return;
+          map.set(folder.id, folder);
+        });
+        const merged = Array.from(map.values());
+        if (!merged.some(folder => folder.id === DEFAULT_FOLDER_ID)) merged.unshift(createDefaultFolder());
+        return merged;
+      }
+
+      function mergePlansForCloud(remotePlans, localPlans, options) {
+        const deletedPlanIds = options.deletedPlanIds || new Set();
+        const deletedFolderIds = options.deletedFolderIds || new Set();
+        const remoteMap = new Map((remotePlans || []).map(plan => [plan.id, normalizePlan(plan)]));
+        const localMap = new Map((localPlans || []).map(plan => [plan.id, normalizePlan(plan)]));
+        const ids = new Set([...remoteMap.keys(), ...localMap.keys()]);
+        const baseOrder = [...localMap.keys(), ...remoteMap.keys()];
+        const mergedMap = new Map();
+
+        ids.forEach(planId => {
+          if (deletedPlanIds.has(planId)) return;
+          const remote = remoteMap.get(planId);
+          const local = localMap.get(planId);
+          const merged = remote && local ? mergePlanForCloud(remote, local, options) : deepClone(local || remote);
+          if (!merged) return;
+          if (deletedFolderIds.has(merged.folderId)) merged.folderId = DEFAULT_FOLDER_ID;
+          mergedMap.set(planId, normalizePlan(merged));
+        });
+
+        return baseOrder
+          .filter((id, index, arr) => arr.indexOf(id) === index && mergedMap.has(id))
+          .map(id => mergedMap.get(id));
+      }
+
+      function mergePlanForCloud(remotePlan, localPlan, options) {
+        const remote = normalizePlan(deepClone(remotePlan));
+        const local = normalizePlan(deepClone(localPlan));
+        const localIsNewer = isSameOrNewer(local.updatedAt, remote.updatedAt);
+        const base = localIsNewer ? local : remote;
+        const merged = {
+          ...base,
+          data: {
+            meta: localIsNewer ? { ...remote.data.meta, ...local.data.meta } : { ...local.data.meta, ...remote.data.meta },
+            actions: mergeRowsForCloud(remote.data.actions, local.data.actions, options, local.id, "actions", localIsNewer),
+            equipment: mergeRowsForCloud(remote.data.equipment, local.data.equipment, options, local.id, "equipment", localIsNewer),
+            trainings: mergeRowsForCloud(remote.data.trainings, local.data.trainings, options, local.id, "trainings", localIsNewer)
+          }
+        };
+        merged.updatedAt = isSameOrNewer(local.updatedAt, remote.updatedAt) ? local.updatedAt : remote.updatedAt;
+        return normalizePlan(merged);
+      }
+
+      function mergeRowsForCloud(remoteRows, localRows, options, planId, section, localOrderFirst) {
+        const deletedKeys = new Set((options.deletedRows || [])
+          .filter(info => (!info.profileId || info.profileId === options.profileId) && info.planId === planId && info.section === section)
+          .map(info => info.rowId));
+        const remoteMap = new Map((remoteRows || []).filter(row => !deletedKeys.has(row.id)).map(row => [row.id, row]));
+        const localMap = new Map((localRows || []).filter(row => !deletedKeys.has(row.id)).map(row => [row.id, row]));
+        const order = localOrderFirst
+          ? [...localMap.keys(), ...remoteMap.keys()]
+          : [...remoteMap.keys(), ...localMap.keys()];
+        const rowMap = new Map();
+        new Set([...remoteMap.keys(), ...localMap.keys()]).forEach(rowId => {
+          const remote = remoteMap.get(rowId);
+          const local = localMap.get(rowId);
+          if (remote && local) {
+            rowMap.set(rowId, isSameOrNewer(local.lastEdited, remote.lastEdited) ? local : remote);
+          } else {
+            rowMap.set(rowId, local || remote);
+          }
+        });
+        return order
+          .filter((id, index, arr) => arr.indexOf(id) === index && rowMap.has(id))
+          .map(id => rowMap.get(id));
+      }
+
+      function mergeActivityLogs(baseEntries, newEntries) {
+        const map = new Map();
+        normalizeActivityLog(baseEntries).forEach(entry => map.set(entry.id, entry));
+        normalizeActivityLog(newEntries).forEach(entry => map.set(entry.id, entry));
+        return normalizeActivityLog(Array.from(map.values()));
+      }
+
+      function isSameOrNewer(candidate, reference) {
+        const candidateTime = Date.parse(candidate || "") || 0;
+        const referenceTime = Date.parse(reference || "") || 0;
+        return candidateTime >= referenceTime;
       }
 
       function startSharedSync() {
