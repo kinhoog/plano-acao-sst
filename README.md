@@ -15,7 +15,7 @@ O projeto funciona em navegador, com interface em arquivo único (`index.html`) 
 - Seções adicionais para equipamentos de emergência e treinamentos.
 - Campos rich text com suporte a texto formatado e imagens.
 - Busca, filtros e ações em lote.
-- Exportação de relatório executivo em PDF.
+- Exportação de relatório executivo em PDF e JPEG por seção.
 - Exportação e importação de backup JSON.
 - Modo dark/light com preferência local.
 - Log de exclusões para perfil, pasta e plano de ação, mostrando quem executou a ação.
@@ -66,8 +66,9 @@ Importante: a chave usada no front-end deve ser somente a chave pública/public�
 4. Crie pastas e planos de ação.
 5. Edite o cronograma, treinamentos e equipamentos diretamente nas tabelas.
 6. Use `Exportar para PDF` para gerar o relatório executivo.
-7. Use `Exportar JSON` para backup manual.
-8. Use `Configurações > Consultar Log` para verificar exclusões registradas.
+7. Use `Exportar JPEG` para gerar imagens executivas separadas por assunto: ações, equipamentos/treinamentos e evidências com imagens.
+8. Use `Exportar JSON` para backup manual.
+9. Use `Configurações > Consultar Log` para verificar exclusões registradas.
 
 ## Backup
 
@@ -83,7 +84,4 @@ Para restaurar, use `Importar JSON`. Essa ação substitui os dados atuais após
 
 ## Créditos
 
-- Idealização e estrutura inicial: Abner Rodrigues
-- Evolução, testes e especificações adicionais: Erick Rocha
-  
-- Desenvolvimento assistido por IA: Codex / OpenAI
+Estruturado e Desenvolvido por: Abner Rodrigues
