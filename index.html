@@ -1634,6 +1634,98 @@
       border-radius: 6px;
     }
 
+    .photo-adjuster {
+      display: grid;
+      gap: 12px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface-soft);
+    }
+
+    .photo-adjuster-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      gap: 12px;
+    }
+
+    .photo-adjuster-head strong {
+      display: block;
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    .photo-adjuster-head span,
+    .photo-crop-hint {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .photo-crop-shell {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .photo-crop-stage {
+      width: 260px;
+      max-width: 100%;
+      aspect-ratio: 1;
+    }
+
+    .photo-crop-stage canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: #fff;
+      cursor: grab;
+      touch-action: none;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.1);
+    }
+
+    .photo-crop-stage canvas.is-dragging {
+      cursor: grabbing;
+    }
+
+    .photo-crop-controls {
+      min-width: 230px;
+      flex: 1;
+      display: grid;
+      gap: 10px;
+    }
+
+    .photo-crop-controls label {
+      display: grid;
+      gap: 7px;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .photo-crop-controls input[type="range"] {
+      width: 100%;
+      accent-color: var(--blue);
+    }
+
+    .photo-crop-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .photo-crop-buttons .button {
+      height: 34px;
+      min-height: 34px;
+      padding: 0 11px;
+      font-size: 12px;
+      border-radius: 6px;
+    }
+
     .context-menu {
       position: fixed;
       z-index: 120;
@@ -1983,6 +2075,14 @@
       .photo-preview {
         align-items: flex-start;
         flex-direction: column;
+      }
+
+      .photo-crop-shell {
+        align-items: stretch;
+      }
+
+      .photo-crop-stage {
+        width: min(100%, 280px);
       }
     }
 
@@ -3821,6 +3921,30 @@
           <input type="file" id="profilePhotoInput" accept="image/*">
         </label>
         <div class="photo-preview" id="profilePhotoPreview"></div>
+        <div class="photo-adjuster hidden" id="profilePhotoAdjuster">
+          <div class="photo-adjuster-head">
+            <div>
+              <strong>Ajustar foto</strong>
+              <span>Arraste a imagem e use o zoom para enquadrar o rosto.</span>
+            </div>
+          </div>
+          <div class="photo-crop-shell">
+            <div class="photo-crop-stage">
+              <canvas id="profilePhotoCanvas" width="320" height="320" aria-label="Ajuste da foto de perfil"></canvas>
+            </div>
+            <div class="photo-crop-controls">
+              <label>Dimensionar foto
+                <input type="range" id="profilePhotoZoomInput" min="100" max="300" value="100">
+              </label>
+              <span class="photo-crop-hint">A área clara representa o recorte usado no avatar.</span>
+              <div class="photo-crop-buttons">
+                <button class="button" type="button" id="profilePhotoResetBtn">Centralizar</button>
+                <button class="button" type="button" id="profilePhotoCancelBtn">Cancelar ajuste</button>
+                <button class="button primary" type="button" id="profilePhotoApplyBtn">Aplicar foto</button>
+              </div>
+            </div>
+          </div>
+        </div>
         <div class="modal-actions split">
           <button class="button icon-only danger hidden" type="button" id="profileDeleteBtn" title="Excluir perfil" aria-label="Excluir perfil">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4c0-1 .7-2 2-2h4c1.3 0 2 1 2 2v2"/><path d="M19 6l-1 14c-.1 1.1-.9 2-2 2H8c-1.1 0-1.9-.9-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
@@ -4066,6 +4190,7 @@
       const DEFAULT_RESPONSIBLES = ["Empresa", "Empresa/Consultoria", "Consultoria", "RH", "SESMT", "CIPA", "Brigada", "Medicina do Trabalho"];
       const AVATAR_COLORS = ["#2563eb", "#0f766e", "#7c3aed", "#b45309", "#be123c", "#475569", "#0369a1", "#15803d"];
       const FOLDER_COLORS = ["#2563eb", "#0f766e", "#7c3aed", "#b45309", "#be123c", "#475569", "#0891b2", "#16a34a"];
+      const AVATAR_CANVAS_SIZE = 320;
       const DEFAULT_DESCRIPTION = "A execução de cada uma das ações propostas configura um fator relevante para a redução dos riscos identificados, por isso deve ser considerado os responsáveis para que seja possível a aplicação de um ciclo de melhoria contínua (PDCA), onde após a realização de cada ação seja realizada uma nova análise dos riscos trabalhados e então atualizado o inventário de riscos.";
 
       let app = createEmptyApp();
@@ -4102,6 +4227,7 @@
       let selectedProfileColor = AVATAR_COLORS[0];
       let selectedFolderColor = FOLDER_COLORS[0];
       let pendingProfilePhoto = "";
+      let profilePhotoEditor = createPhotoEditorState();
       let activeRichEditor = null;
       let activeRichRange = null;
       let selectedRichImage = null;
@@ -4311,6 +4437,15 @@
         document.getElementById("folderForm").addEventListener("submit", saveFolderFromModal);
         document.getElementById("planForm").addEventListener("submit", createPlanFromModal);
         document.getElementById("profilePhotoInput").addEventListener("change", handleProfilePhoto);
+        document.getElementById("profilePhotoZoomInput").addEventListener("input", handleProfilePhotoZoom);
+        document.getElementById("profilePhotoResetBtn").addEventListener("click", resetProfilePhotoCrop);
+        document.getElementById("profilePhotoCancelBtn").addEventListener("click", cancelProfilePhotoCrop);
+        document.getElementById("profilePhotoApplyBtn").addEventListener("click", applyProfilePhotoCrop);
+        const photoCanvas = document.getElementById("profilePhotoCanvas");
+        photoCanvas.addEventListener("pointerdown", handleProfilePhotoPointerDown);
+        photoCanvas.addEventListener("pointermove", handleProfilePhotoPointerMove);
+        photoCanvas.addEventListener("pointerup", handleProfilePhotoPointerUp);
+        photoCanvas.addEventListener("pointercancel", handleProfilePhotoPointerUp);
         document.getElementById("refreshLogBtn").addEventListener("click", async () => {
           await syncSharedStateFromCloud({ force: true, allowWhileEditing: true });
           renderActivityLog();
@@ -5466,6 +5601,7 @@
         deleteButton.classList.toggle("hidden", !profile);
         deleteButton.dataset.profileId = profile ? profile.id : "";
         pendingProfilePhoto = profile ? profile.avatarPhoto : "";
+        closeProfilePhotoAdjuster();
         selectedProfileColor = profile ? profile.avatarColor : AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
         renderColorPalette(els.profileColorPalette, AVATAR_COLORS, selectedProfileColor, handleProfileColorSelect);
         renderProfilePhotoPreview();
@@ -5481,6 +5617,12 @@
         if (!name) {
           alert("Informe o nome completo do perfil.");
           return;
+        }
+        const photoAdjuster = document.getElementById("profilePhotoAdjuster");
+        if (profilePhotoEditor.image && photoAdjuster && !photoAdjuster.classList.contains("hidden")) {
+          pendingProfilePhoto = exportProfilePhotoCrop();
+          closeProfilePhotoAdjuster();
+          renderProfilePhotoPreview();
         }
         const payload = {
           name,
@@ -5570,20 +5712,38 @@
         return true;
       }
 
-      function handleProfilePhoto(event) {
+      function createPhotoEditorState() {
+        return {
+          image: null,
+          source: "",
+          zoomBase: 1,
+          zoomFactor: 1,
+          zoom: 1,
+          offsetX: 0,
+          offsetY: 0,
+          dragging: false,
+          pointerId: null,
+          startX: 0,
+          startY: 0,
+          startOffsetX: 0,
+          startOffsetY: 0
+        };
+      }
+
+      async function handleProfilePhoto(event) {
         const file = event.target.files && event.target.files[0];
         if (!file) return;
         if (!file.type.startsWith("image/")) {
           alert("Selecione um arquivo de imagem.");
           return;
         }
-        imageFileToAvatarDataUrl(file).then(dataUrl => {
-          pendingProfilePhoto = dataUrl;
-          renderProfilePhotoPreview();
-        }).catch(error => {
+        try {
+          const dataUrl = await readFileAsDataUrl(file);
+          await openProfilePhotoAdjuster(dataUrl);
+        } catch (error) {
           console.error(error);
           alert("Não foi possível carregar a imagem. Tente outro arquivo JPEG ou PNG.");
-        });
+        }
       }
 
       function renderProfilePhotoPreview() {
@@ -5592,11 +5752,188 @@
           preview.innerHTML = "<span>Nenhuma foto selecionada. O avatar usará as iniciais.</span>";
           return;
         }
-        preview.innerHTML = `<span class="avatar small"><img src="${escapeAttr(pendingProfilePhoto)}" alt=""></span><span>Foto carregada e salva no navegador.</span><button class="button" type="button" id="removeProfilePhoto">Remover foto</button>`;
+        preview.innerHTML = `<span class="avatar small"><img src="${escapeAttr(pendingProfilePhoto)}" alt=""></span><span>Foto carregada e salva no navegador.</span><button class="button" type="button" id="adjustProfilePhoto">Ajustar foto</button><button class="button" type="button" id="removeProfilePhoto">Remover foto</button>`;
+        document.getElementById("adjustProfilePhoto").addEventListener("click", () => {
+          openProfilePhotoAdjuster(pendingProfilePhoto).catch(error => {
+            console.error(error);
+            alert("Não foi possível abrir o ajuste desta foto.");
+          });
+        });
         document.getElementById("removeProfilePhoto").addEventListener("click", () => {
           pendingProfilePhoto = "";
+          closeProfilePhotoAdjuster();
           document.getElementById("profilePhotoInput").value = "";
           renderProfilePhotoPreview();
+        });
+      }
+
+      async function openProfilePhotoAdjuster(source) {
+        const image = await loadImageElement(source);
+        profilePhotoEditor = createPhotoEditorState();
+        profilePhotoEditor.image = image;
+        profilePhotoEditor.source = source;
+        document.getElementById("profilePhotoAdjuster").classList.remove("hidden");
+        resetProfilePhotoCrop();
+      }
+
+      function closeProfilePhotoAdjuster() {
+        const adjuster = document.getElementById("profilePhotoAdjuster");
+        const canvas = document.getElementById("profilePhotoCanvas");
+        if (adjuster) adjuster.classList.add("hidden");
+        if (canvas) canvas.classList.remove("is-dragging");
+        profilePhotoEditor = createPhotoEditorState();
+      }
+
+      function resetProfilePhotoCrop() {
+        const state = profilePhotoEditor;
+        if (!state || !state.image) return;
+        state.zoomBase = Math.max(AVATAR_CANVAS_SIZE / state.image.naturalWidth, AVATAR_CANVAS_SIZE / state.image.naturalHeight);
+        state.zoomFactor = 1;
+        state.zoom = state.zoomBase;
+        state.offsetX = (AVATAR_CANVAS_SIZE - state.image.naturalWidth * state.zoom) / 2;
+        state.offsetY = (AVATAR_CANVAS_SIZE - state.image.naturalHeight * state.zoom) / 2;
+        document.getElementById("profilePhotoZoomInput").value = "100";
+        clampProfilePhotoCrop();
+        renderProfilePhotoCrop();
+      }
+
+      function cancelProfilePhotoCrop() {
+        document.getElementById("profilePhotoInput").value = "";
+        closeProfilePhotoAdjuster();
+      }
+
+      function applyProfilePhotoCrop() {
+        if (!profilePhotoEditor.image) return;
+        pendingProfilePhoto = exportProfilePhotoCrop();
+        document.getElementById("profilePhotoInput").value = "";
+        closeProfilePhotoAdjuster();
+        renderProfilePhotoPreview();
+      }
+
+      function handleProfilePhotoZoom(event) {
+        const state = profilePhotoEditor;
+        if (!state || !state.image) return;
+        const oldZoom = state.zoom || state.zoomBase || 1;
+        const focusX = AVATAR_CANVAS_SIZE / 2;
+        const focusY = AVATAR_CANVAS_SIZE / 2;
+        const imageFocusX = (focusX - state.offsetX) / oldZoom;
+        const imageFocusY = (focusY - state.offsetY) / oldZoom;
+        state.zoomFactor = Number(event.target.value || 100) / 100;
+        state.zoom = state.zoomBase * state.zoomFactor;
+        state.offsetX = focusX - imageFocusX * state.zoom;
+        state.offsetY = focusY - imageFocusY * state.zoom;
+        clampProfilePhotoCrop();
+        renderProfilePhotoCrop();
+      }
+
+      function handleProfilePhotoPointerDown(event) {
+        const state = profilePhotoEditor;
+        if (!state || !state.image) return;
+        event.preventDefault();
+        const point = profilePhotoCanvasPoint(event);
+        state.dragging = true;
+        state.pointerId = event.pointerId;
+        state.startX = point.x;
+        state.startY = point.y;
+        state.startOffsetX = state.offsetX;
+        state.startOffsetY = state.offsetY;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        event.currentTarget.classList.add("is-dragging");
+      }
+
+      function handleProfilePhotoPointerMove(event) {
+        const state = profilePhotoEditor;
+        if (!state || !state.image || !state.dragging) return;
+        event.preventDefault();
+        const point = profilePhotoCanvasPoint(event);
+        state.offsetX = state.startOffsetX + point.x - state.startX;
+        state.offsetY = state.startOffsetY + point.y - state.startY;
+        clampProfilePhotoCrop();
+        renderProfilePhotoCrop();
+      }
+
+      function handleProfilePhotoPointerUp(event) {
+        const state = profilePhotoEditor;
+        if (!state || !state.dragging) return;
+        state.dragging = false;
+        state.pointerId = null;
+        event.currentTarget.classList.remove("is-dragging");
+        try {
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        } catch (error) {
+          // O navegador pode liberar a captura automaticamente.
+        }
+      }
+
+      function profilePhotoCanvasPoint(event) {
+        const canvas = document.getElementById("profilePhotoCanvas");
+        const rect = canvas.getBoundingClientRect();
+        return {
+          x: (event.clientX - rect.left) * (canvas.width / rect.width),
+          y: (event.clientY - rect.top) * (canvas.height / rect.height)
+        };
+      }
+
+      function clampProfilePhotoCrop() {
+        const state = profilePhotoEditor;
+        if (!state || !state.image) return;
+        const scaledWidth = state.image.naturalWidth * state.zoom;
+        const scaledHeight = state.image.naturalHeight * state.zoom;
+        state.offsetX = scaledWidth <= AVATAR_CANVAS_SIZE
+          ? (AVATAR_CANVAS_SIZE - scaledWidth) / 2
+          : Math.min(0, Math.max(AVATAR_CANVAS_SIZE - scaledWidth, state.offsetX));
+        state.offsetY = scaledHeight <= AVATAR_CANVAS_SIZE
+          ? (AVATAR_CANVAS_SIZE - scaledHeight) / 2
+          : Math.min(0, Math.max(AVATAR_CANVAS_SIZE - scaledHeight, state.offsetY));
+      }
+
+      function renderProfilePhotoCrop() {
+        const state = profilePhotoEditor;
+        const canvas = document.getElementById("profilePhotoCanvas");
+        const ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, AVATAR_CANVAS_SIZE, AVATAR_CANVAS_SIZE);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, AVATAR_CANVAS_SIZE, AVATAR_CANVAS_SIZE);
+        if (!state || !state.image) return;
+        drawProfilePhotoImage(ctx, state);
+        ctx.save();
+        ctx.fillStyle = "rgba(15, 23, 42, 0.48)";
+        ctx.fillRect(0, 0, AVATAR_CANVAS_SIZE, AVATAR_CANVAS_SIZE);
+        ctx.globalCompositeOperation = "destination-out";
+        ctx.beginPath();
+        ctx.arc(AVATAR_CANVAS_SIZE / 2, AVATAR_CANVAS_SIZE / 2, AVATAR_CANVAS_SIZE / 2 - 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.arc(AVATAR_CANVAS_SIZE / 2, AVATAR_CANVAS_SIZE / 2, AVATAR_CANVAS_SIZE / 2 - 10, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      function drawProfilePhotoImage(ctx, state) {
+        const width = state.image.naturalWidth * state.zoom;
+        const height = state.image.naturalHeight * state.zoom;
+        ctx.drawImage(state.image, state.offsetX, state.offsetY, width, height);
+      }
+
+      function exportProfilePhotoCrop() {
+        const canvas = document.createElement("canvas");
+        canvas.width = AVATAR_CANVAS_SIZE;
+        canvas.height = AVATAR_CANVAS_SIZE;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, AVATAR_CANVAS_SIZE, AVATAR_CANVAS_SIZE);
+        drawProfilePhotoImage(ctx, profilePhotoEditor);
+        return canvas.toDataURL("image/jpeg", 0.86);
+      }
+
+      function loadImageElement(source) {
+        return new Promise((resolve, reject) => {
+          const image = new Image();
+          image.onload = () => resolve(image);
+          image.onerror = () => reject(new Error("Imagem inválida"));
+          image.src = source;
         });
       }
 
