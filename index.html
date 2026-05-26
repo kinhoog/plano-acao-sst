@@ -4190,7 +4190,7 @@
       const DEFAULT_RESPONSIBLES = ["Empresa", "Empresa/Consultoria", "Consultoria", "RH", "SESMT", "CIPA", "Brigada", "Medicina do Trabalho"];
       const AVATAR_COLORS = ["#2563eb", "#0f766e", "#7c3aed", "#b45309", "#be123c", "#475569", "#0369a1", "#15803d"];
       const FOLDER_COLORS = ["#2563eb", "#0f766e", "#7c3aed", "#b45309", "#be123c", "#475569", "#0891b2", "#16a34a"];
-      const AVATAR_CANVAS_SIZE = 320;
+      const AVATAR_CANVAS_SIZE = 160;
       const DEFAULT_DESCRIPTION = "A execução de cada uma das ações propostas configura um fator relevante para a redução dos riscos identificados, por isso deve ser considerado os responsáveis para que seja possível a aplicação de um ciclo de melhoria contínua (PDCA), onde após a realização de cada ação seja realizada uma nova análise dos riscos trabalhados e então atualizado o inventário de riscos.";
 
       let app = createEmptyApp();
@@ -5925,7 +5925,7 @@
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, AVATAR_CANVAS_SIZE, AVATAR_CANVAS_SIZE);
         drawProfilePhotoImage(ctx, profilePhotoEditor);
-        return canvas.toDataURL("image/jpeg", 0.86);
+        return canvas.toDataURL("image/jpeg", 0.62);
       }
 
       function loadImageElement(source) {
@@ -8186,7 +8186,7 @@
         saveTimer = setTimeout(() => {
           saveTimer = null;
           saveAppToCloud();
-        }, 700);
+        }, 5000);
         if (app.view === "editor") els.saveStatus.textContent = "Salvando no banco...";
       }
 
@@ -8450,7 +8450,15 @@
       function startSharedSync() {
         stopSharedSync();
         subscribeRealtime();
-        syncTimer = setInterval(() => syncSharedStateFromCloud(), 10000);
+
+        // Realtime é o mecanismo principal. O polling fica só como fallback leve.
+        syncTimer = setInterval(() => {
+          if (document.visibilityState === "visible") {
+            syncSharedStateFromCloud({ force: true }).catch(error => {
+              console.warn("Falha no fallback de sincronização:", error);
+            });
+          }
+        }, 300000);
       }
 
       function stopSharedSync() {
@@ -8474,22 +8482,13 @@
             if (!payload.new || payload.eventType === "DELETE") return;
             applyRemoteSharedState(payload.new).catch(error => console.warn("Falha ao aplicar atualização em tempo real:", error));
           })
-          .on("postgres_changes", {
-            event: "*",
-            schema: "public",
-            table: "user_profiles"
-          }, () => {
-            refreshTeamProfilesFromRealtime().catch(error => console.warn("Falha ao atualizar perfis em tempo real:", error));
-          })
           .on("presence", { event: "sync" }, () => {
             updateOnlineUsersFromPresence();
           })
           .subscribe(status => {
             if (status === "SUBSCRIBED" && currentUser && realtimeChannel) {
               realtimeChannel.track({
-                user_id: currentUser.id,
-                email: currentUser.email || "",
-                online_at: new Date().toISOString()
+                user_id: currentUser.id
               }).catch(error => console.warn("Falha ao registrar presença online:", error));
             }
             if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
@@ -8546,7 +8545,6 @@
         lastSharedUpdatedAt = row.updated_at || "";
         localStorage.setItem(SHARED_STORAGE_KEY, JSON.stringify(app));
         selectedActions.clear();
-        await loadTeamProfiles();
         renderApp();
         if (app.view === "editor") markSaved();
       }
