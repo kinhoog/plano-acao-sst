@@ -4205,8 +4205,11 @@
 
       const SUPABASE_URL = "https://wkfhsccbhdpcoweenbbj.supabase.co";
       const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_RHqIswEDKYVLhpXsqyahLA_VZg5wH3E";
+      const APP_VERSION = "egress-fix-2026-05-27-1500";
+      const EGRESS_DIAG_PREFIX = "[EGRESS-DIAG]";
       const SHARED_STATE_ID = "main";
       const SHARED_STORAGE_KEY = "planoDeAcaoSST.shared.v1";
+      const SHARED_UPDATED_AT_CACHE_KEY = "planoDeAcaoSST.sharedUpdatedAt.v1";
       const LOCAL_MIGRATION_KEY = "planoDeAcaoSST.localMerged.v1";
       const STORAGE_KEY = "planoDeAcaoSST.v2";
       const LEGACY_KEY = "planoDeAcaoSST.v1";
@@ -4222,15 +4225,30 @@
       const AVATAR_COLORS = ["#2563eb", "#0f766e", "#7c3aed", "#b45309", "#be123c", "#475569", "#0369a1", "#15803d"];
       const FOLDER_COLORS = ["#2563eb", "#0f766e", "#7c3aed", "#b45309", "#be123c", "#475569", "#0891b2", "#16a34a"];
       const AVATAR_CANVAS_SIZE = 160;
+      const INACTIVITY_LOGOUT_MS = 60 * 60 * 1000;
+      const HIDDEN_SYNC_PAUSE_MS = 10 * 60 * 1000;
+      const INACTIVITY_RESET_THROTTLE_MS = 30 * 1000;
+      const INACTIVITY_LOG_THROTTLE_MS = 60 * 1000;
       const DEFAULT_DESCRIPTION = "A execução de cada uma das ações propostas configura um fator relevante para a redução dos riscos identificados, por isso deve ser considerado os responsáveis para que seja possível a aplicação de um ciclo de melhoria contínua (PDCA), onde após a realização de cada ação seja realizada uma nova análise dos riscos trabalhados e então atualizado o inventário de riscos.";
       const RESTRICTED_ADMIN_EMAILS = new Set(["administrativo@protege.med.br"]);
+
+      console.info("[APP_VERSION]", APP_VERSION);
 
       let app = createEmptyApp();
       let supabaseClient = null;
       let currentUser = null;
       let cloudReady = false;
       let isHydrating = true;
+      let hydrateUserPromise = null;
+      let hydrateUserId = "";
       let saveTimer = null;
+      let inactivityTimer = null;
+      let inactivityTimerResetAt = 0;
+      let inactivityResetLogAt = 0;
+      let hiddenSyncPauseTimer = null;
+      let hiddenAt = 0;
+      let inactivityLogoutInProgress = false;
+      let pendingSignOutMessage = "";
       let authRedirectMessage = "";
       let pendingPasswordRecovery = false;
       let passwordRecoveryMode = false;
@@ -4325,11 +4343,50 @@
         trash: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4c0-1 .7-2 2-2h4c1.3 0 2 1 2 2v2"/><path d="M19 6l-1 14c-.1 1.1-.9 2-2 2H8c-1.1 0-1.9-.9-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>'
       };
 
+      function egressDiag(event, detail = {}) {
+        const payload = { at: new Date().toISOString(), ...detail };
+        console.info(EGRESS_DIAG_PREFIX, event, payload);
+      }
+
+      function egressDiagCaller() {
+        try {
+          return String(new Error().stack || "")
+            .split("\n")
+            .slice(2, 7)
+            .map(line => line.trim())
+            .filter(Boolean)
+            .join(" <- ");
+        } catch (error) {
+          return "";
+        }
+      }
+
+      function snapshotDiag(snapshot) {
+        return {
+          fullSave: !!(snapshot && snapshot.fullSave),
+          profiles: snapshot && snapshot.profileIds ? snapshot.profileIds.length : dirtyProfileIds.size,
+          deletedProfiles: snapshot && snapshot.deletedProfileIds ? snapshot.deletedProfileIds.length : pendingProfileDeletes.size,
+          deletedPlans: snapshot && snapshot.deletedPlanIds ? snapshot.deletedPlanIds.length : pendingPlanDeletes.size,
+          deletedFolders: snapshot && snapshot.deletedFolderIds ? snapshot.deletedFolderIds.length : pendingFolderDeletes.size,
+          deletedRows: snapshot && snapshot.deletedRows ? snapshot.deletedRows.length : pendingRowDeletes.size,
+          activities: snapshot && snapshot.activityIds ? snapshot.activityIds.length : pendingActivityIds.size,
+          hiddenAdds: snapshot && snapshot.hiddenAdds ? snapshot.hiddenAdds.length : pendingHiddenAdds.size,
+          hiddenRemoves: snapshot && snapshot.hiddenRemoves ? snapshot.hiddenRemoves.length : pendingHiddenRemoves.size
+        };
+      }
+
+      function bindSessionLifecycleEvents() {
+        ["mousemove", "mousedown", "keydown", "touchstart", "scroll", "click", "input"].forEach(eventName => {
+          document.addEventListener(eventName, () => resetInactivityTimer(), { passive: true, capture: true });
+        });
+      }
+
       init();
 
       async function init() {
         applyStoredTheme();
         bindGlobalEvents();
+        bindSessionLifecycleEvents();
         renderColorPalette(els.profileColorPalette, AVATAR_COLORS, selectedProfileColor, handleProfileColorSelect);
         renderColorPalette(els.folderColorPalette, FOLDER_COLORS, selectedFolderColor, handleFolderColorSelect);
         setupSupabase();
@@ -4558,7 +4615,7 @@
         document.getElementById("settingsLogBtn").addEventListener("click", async () => {
           if (blockRestrictedAdminAccess("Tentou consultar o log do sistema.")) return;
           closeModal("settingsModal");
-          await syncSharedStateFromCloud({ force: true, allowWhileEditing: true });
+          await syncSharedStateFromCloud({ force: true, allowWhileEditing: true, source: "open-log-modal" });
           await loadRestrictedAccessLogs();
           renderActivityLog();
           openModal("logModal");
@@ -4595,7 +4652,7 @@
         photoCanvas.addEventListener("pointercancel", handleProfilePhotoPointerUp);
         document.getElementById("refreshLogBtn").addEventListener("click", async () => {
           if (blockRestrictedAdminAccess()) return;
-          await syncSharedStateFromCloud({ force: true, allowWhileEditing: true });
+          await syncSharedStateFromCloud({ force: true, allowWhileEditing: true, source: "refresh-log" });
           await loadRestrictedAccessLogs();
           renderActivityLog();
         });
@@ -4691,19 +4748,135 @@
             clearTimeout(saveTimer);
             saveTimer = null;
           }
-          saveAppToCloud();
+          saveAppToCloud({ source: "pagehide" });
           stopSharedSync();
+          clearSessionLifecycleTimers();
           if (supabaseClient) supabaseClient.auth.signOut();
         });
-        document.addEventListener("visibilitychange", () => {
-          if (document.visibilityState !== "hidden") return;
-          const ownProfile = updateOwnLastAccess();
-          if (ownProfile) {
-            saveApp({ profileId: ownProfile.id });
-            flushCloudSave();
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+        window.addEventListener("focus", () => syncSharedStateFromCloud({ source: "window-focus" }));
+      }
+
+      function resetInactivityTimer(options = {}) {
+        if (!currentUser || !cloudReady || inactivityLogoutInProgress) return;
+        const now = Date.now();
+        const force = !!options.force;
+        if (!force && inactivityTimer && now - inactivityTimerResetAt < INACTIVITY_RESET_THROTTLE_MS) return;
+        if (inactivityTimer) clearTimeout(inactivityTimer);
+        inactivityTimer = setTimeout(() => {
+          handleInactivityLogout().catch(error => console.warn("Falha ao encerrar por inatividade:", error));
+        }, INACTIVITY_LOGOUT_MS);
+        inactivityTimerResetAt = now;
+        if (force || now - inactivityResetLogAt >= INACTIVITY_LOG_THROTTLE_MS) {
+          inactivityResetLogAt = now;
+          egressDiag("inactivity timer resetado", { timeoutMs: INACTIVITY_LOGOUT_MS });
+        }
+      }
+
+      function clearInactivityTimer() {
+        if (inactivityTimer) clearTimeout(inactivityTimer);
+        inactivityTimer = null;
+        inactivityTimerResetAt = 0;
+      }
+
+      function clearHiddenSyncPauseTimer() {
+        if (hiddenSyncPauseTimer) clearTimeout(hiddenSyncPauseTimer);
+        hiddenSyncPauseTimer = null;
+        hiddenAt = 0;
+      }
+
+      function clearSessionLifecycleTimers() {
+        clearInactivityTimer();
+        clearHiddenSyncPauseTimer();
+      }
+
+      async function handleInactivityLogout() {
+        if (!currentUser || inactivityLogoutInProgress) return;
+        inactivityLogoutInProgress = true;
+        try {
+          egressDiag("sessão encerrada por inatividade", {
+            hasPendingCloudChanges: hasPendingCloudChanges(),
+            readonly: isRestrictedAdminUser()
+          });
+          if (saveTimer) {
+            clearTimeout(saveTimer);
+            saveTimer = null;
           }
-        });
-        window.addEventListener("focus", () => syncSharedStateFromCloud());
+          if (!isRestrictedAdminUser() && hasPendingCloudChanges()) {
+            await saveAppToCloud({ source: "inactivity-logout" });
+          }
+          if (saveTimer) {
+            clearTimeout(saveTimer);
+            saveTimer = null;
+          }
+          pendingSignOutMessage = "Sessão encerrada por inatividade.";
+          stopSharedSync();
+          clearSessionLifecycleTimers();
+          if (supabaseClient) {
+            await supabaseClient.auth.signOut();
+          } else {
+            currentUser = null;
+            cloudReady = false;
+            app = createEmptyApp();
+            selectedActions.clear();
+            renderApp();
+            setAuthMessage("Sessão encerrada por inatividade.", "");
+          }
+        } finally {
+          if (currentUser) inactivityLogoutInProgress = false;
+        }
+      }
+
+      function handleVisibilityChange() {
+        if (document.visibilityState === "hidden") {
+          handleTabHidden();
+          return;
+        }
+        handleTabVisible().catch(error => console.warn("Falha ao retomar sincronização:", error));
+      }
+
+      function handleTabHidden() {
+        egressDiag("aba oculta, sync pausado", { pauseAfterMs: HIDDEN_SYNC_PAUSE_MS });
+        const ownProfile = updateOwnLastAccess();
+        if (ownProfile) {
+          saveApp({ profileId: ownProfile.id });
+          flushCloudSave();
+        }
+        if (hiddenSyncPauseTimer) clearTimeout(hiddenSyncPauseTimer);
+        hiddenAt = Date.now();
+        hiddenSyncPauseTimer = setTimeout(() => {
+          hiddenSyncPauseTimer = null;
+          if (document.visibilityState !== "hidden") return;
+          egressDiag("aba oculta há 10min, realtime removido", {
+            hiddenForMs: Date.now() - hiddenAt
+          });
+          stopSharedSync();
+        }, HIDDEN_SYNC_PAUSE_MS);
+      }
+
+      async function handleTabVisible() {
+        clearHiddenSyncPauseTimer();
+        egressDiag("aba visível, sync retomado");
+        if (!supabaseClient || !currentUser || inactivityLogoutInProgress) return;
+        resetInactivityTimer({ force: true });
+        const { data, error } = await supabaseClient.auth.getSession();
+        if (error || !data.session || !data.session.user) {
+          pendingSignOutMessage = "Sessão encerrada.";
+          stopSharedSync();
+          clearSessionLifecycleTimers();
+          currentUser = null;
+          cloudReady = false;
+          app = createEmptyApp();
+          selectedActions.clear();
+          renderApp();
+          setAuthMessage(pendingSignOutMessage, "");
+          pendingSignOutMessage = "";
+          return;
+        }
+        if (cloudReady) {
+          startSharedSync();
+          await syncSharedStateFromCloud({ force: true, allowWhileEditing: true, source: "tab-visible" });
+        }
       }
 
       function setupSupabase() {
@@ -4731,12 +4904,17 @@
           }
           if (event === "SIGNED_OUT") {
             stopSharedSync();
+            clearSessionLifecycleTimers();
             currentUser = null;
             cloudReady = false;
             app = createEmptyApp();
             selectedActions.clear();
             renderApp();
-            setAuthMessage(authRedirectMessage || "Sessão encerrada.", authRedirectMessage ? "error" : "ok");
+            const message = pendingSignOutMessage || authRedirectMessage || "Sessão encerrada.";
+            const tone = pendingSignOutMessage ? "" : (authRedirectMessage ? "error" : "ok");
+            pendingSignOutMessage = "";
+            inactivityLogoutInProgress = false;
+            setAuthMessage(message, tone);
             return;
           }
           if (session && session.user && (!currentUser || currentUser.id !== session.user.id)) {
@@ -4797,45 +4975,57 @@
 
       async function hydrateUser(user) {
         if (currentUser && currentUser.id === user.id && cloudReady) return;
-        currentUser = user;
-        applyStoredTheme();
-        cloudReady = false;
-        setAuthMessage("Carregando seus dados do banco...", "");
-        try {
-          app = await loadAppFromCloud(user);
-          await loadTeamProfiles();
-          await publishOwnProfileIfNeeded();
-          await loadTeamProfiles();
-          app.view = "profiles";
-          app.activeProfileId = null;
-          app.activeFolderId = DEFAULT_FOLDER_ID;
-          app.activePlanId = null;
-          cloudReady = true;
-          startSharedSync();
-          const ownProfile = isRestrictedAdminUser(user) ? null : updateOwnLastAccess();
-          recordActivity("Entrou no sistema", `Login realizado por ${user.email || "usuário"}.`, { profile: ownProfile || null });
-          if (ownProfile) saveApp({ profileId: ownProfile.id });
-          else saveApp({ localOnly: true });
-          renderApp();
-          setAuthMessage(`Conectado como ${user.email || "usuário"}.`, "ok");
-          if (pendingPasswordRecovery) {
-            pendingPasswordRecovery = false;
-            openPasswordModal({ recovery: true });
-            setPasswordMessage("Digite uma nova senha para concluir a redefinição.", "");
-          }
-        } catch (error) {
-          console.error(error);
-          app = createEmptyApp();
-          cloudReady = false;
-          stopSharedSync();
-          renderApp();
-          setAuthMessage("Login aceito, mas o banco compartilhado não abriu. Verifique a tabela shared_states, as políticas RLS e a conexão antes de usar.", "error");
-          if (pendingPasswordRecovery) {
-            pendingPasswordRecovery = false;
-            openPasswordModal({ recovery: true });
-            setPasswordMessage("Digite uma nova senha para concluir a redefinição.", "");
-          }
+        if (hydrateUserPromise && hydrateUserId === user.id) {
+          egressDiag("hydrateUser reutilizando hidratação em andamento", { userId: user.id });
+          return hydrateUserPromise;
         }
+        hydrateUserId = user.id;
+        hydrateUserPromise = (async () => {
+          if (currentUser && currentUser.id !== user.id) stopSharedSync();
+          currentUser = user;
+          applyStoredTheme();
+          cloudReady = false;
+          setAuthMessage("Carregando seus dados do banco...", "");
+          try {
+            app = await loadAppFromCloud(user);
+            await publishOwnProfileIfNeeded();
+            await loadTeamProfiles();
+            app.view = "profiles";
+            app.activeProfileId = null;
+            app.activeFolderId = DEFAULT_FOLDER_ID;
+            app.activePlanId = null;
+            cloudReady = true;
+            startSharedSync();
+            resetInactivityTimer({ force: true });
+            const ownProfile = isRestrictedAdminUser(user) ? null : updateOwnLastAccess();
+            recordActivity("Entrou no sistema", `Login realizado por ${user.email || "usuário"}.`, { profile: ownProfile || null });
+            if (ownProfile) saveApp({ profileId: ownProfile.id });
+            else saveApp({ localOnly: true });
+            renderApp();
+            setAuthMessage(`Conectado como ${user.email || "usuário"}.`, "ok");
+            if (pendingPasswordRecovery) {
+              pendingPasswordRecovery = false;
+              openPasswordModal({ recovery: true });
+              setPasswordMessage("Digite uma nova senha para concluir a redefinição.", "");
+            }
+          } catch (error) {
+            console.error(error);
+            app = createEmptyApp();
+            cloudReady = false;
+            stopSharedSync();
+            renderApp();
+            setAuthMessage("Login aceito, mas o banco compartilhado não abriu. Verifique a tabela shared_states, as políticas RLS e a conexão antes de usar.", "error");
+            if (pendingPasswordRecovery) {
+              pendingPasswordRecovery = false;
+              openPasswordModal({ recovery: true });
+              setPasswordMessage("Digite uma nova senha para concluir a redefinição.", "");
+            }
+          } finally {
+            hydrateUserPromise = null;
+            hydrateUserId = "";
+          }
+        })();
+        return hydrateUserPromise;
       }
 
       async function handleLogin(event) {
@@ -4980,7 +5170,7 @@
         if (!data.user || normalizeText(data.user.email) !== normalizeText(targetProfile.email)) {
           return setSwitchUserMessage("A senha informada não pertence a este perfil.", "error");
         }
-        await syncSharedStateFromCloud({ force: true, allowWhileEditing: true });
+        await syncSharedStateFromCloud({ force: true, allowWhileEditing: true, source: "protected-action-verified" });
         pendingProtectedAction = null;
         closeModal("switchUserModal");
         if (action.action === "edit") openProfileModal(action.profileId);
@@ -5015,17 +5205,32 @@
 
       async function loadAppFromCloud(user) {
         const localCache = readLocalSharedCache();
-        const { data, error } = await supabaseClient
-          .from("shared_states")
-          .select("data, updated_at")
-          .eq("id", SHARED_STATE_ID)
-          .maybeSingle();
-
-        if (error) throw error;
-        if (data && data.data) {
-          lastSharedUpdatedAt = data.updated_at || "";
-          return mergeLocalCacheIntoCloud(normalizeApp(data.data), localCache);
+        const cachedUpdatedAt = readLocalSharedUpdatedAt();
+        const migrationDone = isRestrictedAdminUser(user) || !!localStorage.getItem(`${LOCAL_MIGRATION_KEY}.${user.id}`);
+        egressDiag("loadAppFromCloud chamada", {
+          hasLocalCache: !!localCache,
+          cachedUpdatedAt,
+          migrationDone
+        });
+        const remoteUpdatedAt = await fetchSharedStateUpdatedAt({ source: "loadAppFromCloud", throwOnError: true });
+        if (remoteUpdatedAt && localCache && cachedUpdatedAt === remoteUpdatedAt && migrationDone) {
+          lastSharedUpdatedAt = remoteUpdatedAt;
+          egressDiag("loadAppFromCloud usando cache local; data remoto não baixado", { remoteUpdatedAt });
+          return localCache;
         }
+
+        if (remoteUpdatedAt) {
+          egressDiag("loadAppFromCloud baixando data completo", { remoteUpdatedAt, cachedUpdatedAt });
+          const row = await fetchSharedStateFull({ source: "loadAppFromCloud", throwOnError: true });
+          if (row && row.data) {
+            lastSharedUpdatedAt = row.updated_at || "";
+            const merged = await mergeLocalCacheIntoCloud(normalizeApp(row.data), localCache);
+            writeLocalSharedCache(merged, lastSharedUpdatedAt);
+            return merged;
+          }
+          throw new Error("Linha shared_states/main não retornou data.");
+        }
+
         const initial = createEmptyApp();
         const { data: created, error: createError } = await supabaseClient
           .from("shared_states")
@@ -5034,11 +5239,13 @@
             data: initial,
             updated_at: new Date().toISOString()
           }, { onConflict: "id" })
-          .select("data, updated_at")
+          .select("updated_at")
           .single();
         if (createError) throw createError;
         lastSharedUpdatedAt = created && created.updated_at ? created.updated_at : "";
-        return mergeLocalCacheIntoCloud(normalizeApp(created && created.data ? created.data : initial), localCache);
+        const merged = await mergeLocalCacheIntoCloud(normalizeApp(initial), localCache);
+        writeLocalSharedCache(merged, lastSharedUpdatedAt);
+        return merged;
       }
 
       function readLocalSharedCache() {
@@ -5050,6 +5257,15 @@
           console.warn("Cache local antigo ignorado:", error);
           return null;
         }
+      }
+
+      function readLocalSharedUpdatedAt() {
+        return localStorage.getItem(SHARED_UPDATED_AT_CACHE_KEY) || "";
+      }
+
+      function writeLocalSharedCache(data, updatedAt = lastSharedUpdatedAt) {
+        localStorage.setItem(SHARED_STORAGE_KEY, JSON.stringify(data));
+        if (updatedAt) localStorage.setItem(SHARED_UPDATED_AT_CACHE_KEY, updatedAt);
       }
 
       async function mergeLocalCacheIntoCloud(cloudApp, localApp) {
@@ -5116,6 +5332,7 @@
           return merged;
         }
 
+        egressDiag("mergeLocalCacheIntoCloud enviando migração local", { changed });
         const { data, error } = await supabaseClient
           .from("shared_states")
           .upsert({
@@ -5123,7 +5340,7 @@
             data: sharedAppData(merged),
             updated_at: new Date().toISOString()
           }, { onConflict: "id" })
-          .select("data, updated_at")
+          .select("updated_at")
           .single();
         if (error) {
           console.warn("Não foi possível migrar o cache local para o banco:", error);
@@ -5131,7 +5348,9 @@
         }
         localStorage.setItem(migrationKey, new Date().toISOString());
         lastSharedUpdatedAt = data && data.updated_at ? data.updated_at : lastSharedUpdatedAt;
-        return normalizeApp(data && data.data ? data.data : merged);
+        const normalized = normalizeApp(sharedAppData(merged));
+        writeLocalSharedCache(normalized, lastSharedUpdatedAt);
+        return normalized;
       }
 
       function ensureSinglePrivateProfile() {
@@ -5180,6 +5399,7 @@
         }
         const own = isRestrictedAdminUser() ? null : ensureSinglePrivateProfile();
         try {
+          egressDiag("user_profiles select lista", { source: "loadTeamProfiles" });
           const { data, error } = await supabaseClient
             .from("user_profiles")
             .select("user_id, display_name, role, company, email, avatar_color, avatar_photo, updated_at")
@@ -5223,6 +5443,7 @@
 
       async function getOwnPublicProfileRow() {
         if (!supabaseClient || !currentUser) return null;
+        egressDiag("user_profiles select próprio perfil", { userId: currentUser.id });
         const { data, error } = await supabaseClient
           .from("user_profiles")
           .select("avatar_photo, avatar_color, display_name, role, company")
@@ -5233,6 +5454,15 @@
           return null;
         }
         return data || null;
+      }
+
+      function publicProfileRowMatches(row, nextRow) {
+        if (!row || !nextRow) return false;
+        return String(row.display_name || "") === String(nextRow.display_name || "")
+          && String(row.role || "") === String(nextRow.role || "")
+          && String(row.company || "") === String(nextRow.company || "")
+          && String(row.avatar_color || "") === String(nextRow.avatar_color || "")
+          && String(row.avatar_photo || "") === String(nextRow.avatar_photo || "");
       }
 
       async function syncOwnPublicProfile(profile) {
@@ -5247,6 +5477,7 @@
           avatar_photo: profile.avatarPhoto || "",
           updated_at: new Date().toISOString()
         };
+        egressDiag("user_profiles upsert próprio perfil", { source: "syncOwnPublicProfile", userId: currentUser.id });
         const { error } = await supabaseClient
           .from("user_profiles")
           .upsert(row, { onConflict: "user_id" });
@@ -5280,6 +5511,11 @@
           avatar_photo: profile.avatarPhoto || "",
           updated_at: new Date().toISOString()
         };
+        if (existing && publicProfileRowMatches(existing, row)) {
+          egressDiag("publishOwnProfileIfNeeded pulou upsert sem alteração", { userId: currentUser.id });
+          return profile;
+        }
+        egressDiag("user_profiles upsert próprio perfil", { source: "publishOwnProfileIfNeeded", userId: currentUser.id });
         const { error } = await supabaseClient
           .from("user_profiles")
           .upsert(row, { onConflict: "user_id" });
@@ -8381,7 +8617,24 @@
         const key = currentUser ? SHARED_STORAGE_KEY : STORAGE_KEY;
         localStorage.setItem(key, JSON.stringify(app));
         if (!isHydrating) lastLocalChangeAt = Date.now();
-        let pureActivitySave = false;
+        const pureActivitySave = options.activityId
+          && !options.fullSave
+          && !options.deleteProfileId
+          && !options.deletePlanId
+          && !options.deleteFolderId
+          && !options.rowDelete
+          && !options.rowDeletes
+          && !options.profileId
+          && !options.hiddenAdd
+          && !options.hiddenRemove;
+        if (isRestrictedAdminUser() && !options.localOnly) {
+          egressDiag("saveApp bloqueado por modo readonly", {
+            options: Object.keys(options),
+            pureActivitySave: !!pureActivitySave,
+            caller: egressDiagCaller()
+          });
+          return;
+        }
         if (!options.localOnly) {
           if (options.fullSave) pendingFullSave = true;
           if (options.deleteProfileId) pendingProfileDeletes.add(options.deleteProfileId);
@@ -8399,22 +8652,11 @@
           if (options.hiddenAdd) pendingHiddenAdds.add(options.hiddenAdd);
           if (options.hiddenRemove) pendingHiddenRemoves.add(options.hiddenRemove);
           if (options.profileId) dirtyProfileIds.add(options.profileId);
-          pureActivitySave = options.activityId
-            && !options.fullSave
-            && !options.deleteProfileId
-            && !options.deletePlanId
-            && !options.deleteFolderId
-            && !options.rowDelete
-            && !options.rowDeletes
-            && !options.profileId
-            && !options.hiddenAdd
-            && !options.hiddenRemove;
           if (!options.fullSave && !options.deleteProfileId && !options.profileId && !pureActivitySave && app.activeProfileId) {
             dirtyProfileIds.add(app.activeProfileId);
           }
         }
-        const restrictedActivityOnly = isRestrictedAdminUser() && pureActivitySave;
-        if (!currentUser || (isRestrictedAdminUser() && !restrictedActivityOnly) || !cloudReady || isHydrating || options.localOnly || !hasPendingCloudChanges()) return;
+        if (!currentUser || !cloudReady || isHydrating || options.localOnly || !hasPendingCloudChanges()) return;
         scheduleCloudSave();
       }
 
@@ -8481,10 +8723,17 @@
       }
 
       function scheduleCloudSave() {
-        if (saveTimer) clearTimeout(saveTimer);
+        egressDiag("scheduleCloudSave disparado", {
+          pending: snapshotDiag(),
+          caller: egressDiagCaller()
+        });
+        if (saveTimer) {
+          clearTimeout(saveTimer);
+          egressDiag("scheduleCloudSave substituiu debounce anterior", { delayMs: 5000 });
+        }
         saveTimer = setTimeout(() => {
           saveTimer = null;
-          saveAppToCloud();
+          saveAppToCloud({ source: "debounced-save" });
         }, 5000);
         if (app.view === "editor") els.saveStatus.textContent = "Salvando no banco...";
       }
@@ -8493,14 +8742,28 @@
         if (saveTimer) {
           clearTimeout(saveTimer);
           saveTimer = null;
-          await saveAppToCloud();
+          egressDiag("flushCloudSave limpou debounce pendente", { pending: snapshotDiag() });
+          await saveAppToCloud({ source: "flushCloudSave:timer" });
         } else if (hasPendingCloudChanges()) {
-          await saveAppToCloud();
+          await saveAppToCloud({ source: "flushCloudSave:pending" });
         }
       }
 
-      async function saveAppToCloud() {
-        if (!supabaseClient || !currentUser || !cloudReady || isSavingCloud) return;
+      async function saveAppToCloud(options = {}) {
+        egressDiag("saveAppToCloud chamada", {
+          source: options.source || "direct",
+          pending: snapshotDiag(),
+          caller: egressDiagCaller()
+        });
+        if (!supabaseClient || !currentUser || !cloudReady || isSavingCloud) {
+          egressDiag("saveAppToCloud ignorada por guarda", {
+            hasClient: !!supabaseClient,
+            hasUser: !!currentUser,
+            cloudReady,
+            isSavingCloud
+          });
+          return;
+        }
         const snapshot = takePendingCloudSnapshot();
         if (!snapshot.fullSave
           && !snapshot.profileIds.length
@@ -8510,8 +8773,12 @@
           && !snapshot.deletedRows.length
           && !snapshot.activityIds.length
           && !snapshot.hiddenAdds.length
-          && !snapshot.hiddenRemoves.length) return;
-        if (isRestrictedAdminUser() && !snapshotHasOnlyActivity(snapshot)) {
+          && !snapshot.hiddenRemoves.length) {
+          egressDiag("saveAppToCloud ignorada sem mudanças pendentes");
+          return;
+        }
+        if (isRestrictedAdminUser()) {
+          egressDiag("saveAppToCloud bloqueada por modo readonly", { snapshot: snapshotDiag(snapshot) });
           clearPendingCloudSnapshot(snapshot);
           return;
         }
@@ -8536,9 +8803,9 @@
             return;
           }
           app = restoreLocalNavigation(normalizeApp(mergedData), captureLocalNavigation());
-          localStorage.setItem(SHARED_STORAGE_KEY, JSON.stringify(app));
           lastCloudSaveAt = Date.now();
           if (data && data.updated_at) lastSharedUpdatedAt = data.updated_at;
+          writeLocalSharedCache(app, lastSharedUpdatedAt);
           if (app.view === "editor") markSaved();
           savedCloudOk = true;
         } catch (error) {
@@ -8552,10 +8819,24 @@
       }
 
       async function buildMergedCloudData(snapshot) {
-        if (snapshot.fullSave) return sharedAppData(app);
-        const remoteUpdatedAt = await fetchSharedStateUpdatedAt();
-        if (remoteUpdatedAt && remoteUpdatedAt === lastSharedUpdatedAt) return sharedAppData(app);
-        const row = await fetchSharedStateFull();
+        egressDiag("buildMergedCloudData chamada", { snapshot: snapshotDiag(snapshot) });
+        if (snapshot.fullSave) {
+          egressDiag("buildMergedCloudData fullSave; não baixou data remoto");
+          return sharedAppData(app);
+        }
+        const remoteUpdatedAt = await fetchSharedStateUpdatedAt({ source: "buildMergedCloudData" });
+        if (remoteUpdatedAt && remoteUpdatedAt === lastSharedUpdatedAt) {
+          egressDiag("buildMergedCloudData não baixou data remoto", {
+            remoteUpdatedAt,
+            lastSharedUpdatedAt
+          });
+          return sharedAppData(app);
+        }
+        egressDiag("buildMergedCloudData baixando data remoto", {
+          remoteUpdatedAt,
+          lastSharedUpdatedAt
+        });
+        const row = await fetchSharedStateFull({ source: "buildMergedCloudData" });
         const latest = row && row.data ? normalizeApp(row.data) : createEmptyApp();
         const deleteIds = new Set(snapshot.deletedProfileIds.filter(Boolean));
         const deletedPlanIds = new Set((snapshot.deletedPlanIds || []).filter(Boolean));
@@ -8748,25 +9029,39 @@
       }
 
       function startSharedSync() {
+        egressDiag("startSharedSync chamado", {
+          hadTimer: !!syncTimer,
+          hadChannel: !!realtimeChannel
+        });
         stopSharedSync();
         subscribeRealtime();
         syncTimer = setInterval(() => {
           if (document.visibilityState === "visible") {
-            syncSharedStateFromCloud();
+            syncSharedStateFromCloud({ source: "polling-fallback" });
           }
         }, 300000);
+        egressDiag("polling criado", { intervalMs: 300000 });
       }
 
       function stopSharedSync() {
         if (syncTimer) {
           clearInterval(syncTimer);
           syncTimer = null;
+          egressDiag("polling limpo");
         }
         unsubscribeRealtime();
       }
 
       function subscribeRealtime() {
-        if (!supabaseClient || !currentUser || realtimeChannel) return;
+        if (!supabaseClient || !currentUser) return;
+        if (realtimeChannel) {
+          egressDiag("subscribeRealtime removeu canal antigo antes de criar novo");
+          unsubscribeRealtime();
+        }
+        egressDiag("realtime criado", {
+          table: "shared_states",
+          filter: `id=eq.${SHARED_STATE_ID}`
+        });
         realtimeChannel = supabaseClient
           .channel("sst-shared-team")
           .on("postgres_changes", {
@@ -8783,6 +9078,7 @@
           })
           .subscribe(status => {
             if (status === "SUBSCRIBED" && currentUser && realtimeChannel) {
+              egressDiag("Presence track enviado", { user_id: currentUser.id });
               realtimeChannel.track({
                 user_id: currentUser.id
               }).catch(error => console.warn("Falha ao registrar presença online:", error));
@@ -8795,6 +9091,7 @@
 
       function unsubscribeRealtime() {
         if (realtimeChannel && supabaseClient) {
+          egressDiag("realtime removido");
           realtimeChannel.untrack().catch(error => console.warn("Falha ao remover presença online:", error));
           supabaseClient.removeChannel(realtimeChannel);
         }
@@ -8814,33 +9111,75 @@
       }
 
       async function syncSharedStateFromCloud(options = {}) {
-        if (!supabaseClient || !currentUser || !cloudReady || isSavingCloud) return;
-        if (!options.force && hasRecentLocalActivity()) return;
-        if (!options.allowWhileEditing && isUserEditing()) return;
-        const remoteUpdatedAt = await fetchSharedStateUpdatedAt();
-        if (!remoteUpdatedAt || remoteUpdatedAt === lastSharedUpdatedAt) return;
-        const row = await fetchSharedStateFull();
+        egressDiag("syncSharedStateFromCloud chamada", {
+          source: options.source || "unknown",
+          force: !!options.force,
+          allowWhileEditing: !!options.allowWhileEditing,
+          caller: egressDiagCaller()
+        });
+        if (!supabaseClient || !currentUser || !cloudReady || isSavingCloud) {
+          egressDiag("syncSharedStateFromCloud ignorada por guarda", {
+            hasClient: !!supabaseClient,
+            hasUser: !!currentUser,
+            cloudReady,
+            isSavingCloud
+          });
+          return;
+        }
+        if (!options.force && hasRecentLocalActivity()) {
+          egressDiag("syncSharedStateFromCloud ignorada por atividade local recente", { source: options.source || "unknown" });
+          return;
+        }
+        if (!options.allowWhileEditing && isUserEditing()) {
+          egressDiag("syncSharedStateFromCloud ignorada por edição ativa", { source: options.source || "unknown" });
+          return;
+        }
+        const remoteUpdatedAt = await fetchSharedStateUpdatedAt({ source: options.source || "syncSharedStateFromCloud" });
+        if (!remoteUpdatedAt || remoteUpdatedAt === lastSharedUpdatedAt) {
+          egressDiag("syncSharedStateFromCloud não baixou data", {
+            remoteUpdatedAt,
+            lastSharedUpdatedAt
+          });
+          return;
+        }
+        egressDiag("syncSharedStateFromCloud baixando data completo", {
+          remoteUpdatedAt,
+          lastSharedUpdatedAt
+        });
+        const row = await fetchSharedStateFull({ source: options.source || "syncSharedStateFromCloud" });
         if (!row || !row.data) return;
         await applyRemoteSharedState(row, options);
       }
 
-      async function fetchSharedStateUpdatedAt() {
+      async function fetchSharedStateUpdatedAt(options = {}) {
+        egressDiag("shared_states select updated_at", { source: options.source || "unknown" });
         const { data, error } = await supabaseClient
           .from("shared_states")
           .select("updated_at")
           .eq("id", SHARED_STATE_ID)
-          .single();
-        if (error || !data) return "";
+          .maybeSingle();
+        if (error) {
+          egressDiag("shared_states select updated_at erro", { source: options.source || "unknown", message: error.message });
+          if (options.throwOnError) throw error;
+          return "";
+        }
+        if (!data) return "";
         return data.updated_at || "";
       }
 
-      async function fetchSharedStateFull() {
+      async function fetchSharedStateFull(options = {}) {
+        egressDiag("shared_states select data, updated_at", { source: options.source || "unknown" });
         const { data, error } = await supabaseClient
           .from("shared_states")
           .select("data, updated_at")
           .eq("id", SHARED_STATE_ID)
-          .single();
-        if (error || !data) return null;
+          .maybeSingle();
+        if (error) {
+          egressDiag("shared_states select data erro", { source: options.source || "unknown", message: error.message });
+          if (options.throwOnError) throw error;
+          return null;
+        }
+        if (!data) return null;
         return data;
       }
 
@@ -8851,7 +9190,7 @@
         if (!options.allowWhileEditing && isUserEditing()) return;
         app = restoreLocalNavigation(normalizeApp(row.data), captureLocalNavigation());
         lastSharedUpdatedAt = row.updated_at || "";
-        localStorage.setItem(SHARED_STORAGE_KEY, JSON.stringify(app));
+        writeLocalSharedCache(app, lastSharedUpdatedAt);
         selectedActions.clear();
         renderApp();
         if (app.view === "editor") markSaved();
