@@ -4221,7 +4221,7 @@
       const DEFAULT_RESPONSIBLES = ["Empresa", "Empresa/Consultoria", "Consultoria", "RH", "SESMT", "CIPA", "Brigada", "Medicina do Trabalho"];
       const AVATAR_COLORS = ["#2563eb", "#0f766e", "#7c3aed", "#b45309", "#be123c", "#475569", "#0369a1", "#15803d"];
       const FOLDER_COLORS = ["#2563eb", "#0f766e", "#7c3aed", "#b45309", "#be123c", "#475569", "#0891b2", "#16a34a"];
-      const AVATAR_CANVAS_SIZE = 320;
+      const AVATAR_CANVAS_SIZE = 160;
       const DEFAULT_DESCRIPTION = "A execução de cada uma das ações propostas configura um fator relevante para a redução dos riscos identificados, por isso deve ser considerado os responsáveis para que seja possível a aplicação de um ciclo de melhoria contínua (PDCA), onde após a realização de cada ação seja realizada uma nova análise dos riscos trabalhados e então atualizado o inventário de riscos.";
       const RESTRICTED_ADMIN_EMAILS = new Set(["administrativo@protege.med.br"]);
 
@@ -6105,7 +6105,7 @@
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, AVATAR_CANVAS_SIZE, AVATAR_CANVAS_SIZE);
         drawProfilePhotoImage(ctx, profilePhotoEditor);
-        return canvas.toDataURL("image/jpeg", 0.86);
+        return canvas.toDataURL("image/jpeg", 0.62);
       }
 
       function loadImageElement(source) {
@@ -6811,11 +6811,17 @@
         if (isRestrictedAdminUser()) return;
         const { row } = getRowFromElement(editor);
         if (!row) return;
-        row[editor.dataset.field] = sanitizeRichHtml(editor.innerHTML);
-        touchRowAndPlan(row);
-        saveApp();
-        renderDashboard();
-        markSaved();
+        const persist = () => {
+          row[editor.dataset.field] = sanitizeRichHtml(editor.innerHTML);
+          touchRowAndPlan(row);
+          saveApp();
+          renderDashboard();
+          markSaved();
+        };
+        compressRichEditorImages(editor).then(persist).catch(error => {
+          console.error(error);
+          persist();
+        });
       }
 
       function savePlainEditor(editor) {
@@ -7182,11 +7188,14 @@
       function insertImageFileIntoEditor(file, editor) {
         if (isRestrictedAdminUser()) return;
         if (!file || !file.type.startsWith("image/")) return;
-        readFileAsDataUrl(file).then(dataUrl => {
+        compressImageFileToDataUrl(file).then(dataUrl => {
           restoreRichSelection();
-          insertHtmlAtCursor(`<span class="rt-image-wrap" contenteditable="false" style="width:260px"><img src="${escapeAttr(dataUrl)}" alt="Imagem anexada"></span>&nbsp;`, editor);
+          insertHtmlAtCursor(`<span class="rt-image-wrap" contenteditable="false" style="width:260px"><img src="${escapeAttr(dataUrl)}" alt="Imagem anexada" data-sst-compressed="true"></span>&nbsp;`, editor);
           saveRichEditor(editor);
           showRichToolbar(editor);
+        }).catch(error => {
+          console.error(error);
+          alert("Não foi possível inserir a imagem. Tente outro arquivo JPEG ou PNG.");
         });
       }
 
@@ -8476,7 +8485,7 @@
         saveTimer = setTimeout(() => {
           saveTimer = null;
           saveAppToCloud();
-        }, 700);
+        }, 5000);
         if (app.view === "editor") els.saveStatus.textContent = "Salvando no banco...";
       }
 
@@ -8544,13 +8553,10 @@
 
       async function buildMergedCloudData(snapshot) {
         if (snapshot.fullSave) return sharedAppData(app);
-        const { data, error } = await supabaseClient
-          .from("shared_states")
-          .select("data")
-          .eq("id", SHARED_STATE_ID)
-          .maybeSingle();
-        if (error) throw error;
-        const latest = data && data.data ? normalizeApp(data.data) : createEmptyApp();
+        const remoteUpdatedAt = await fetchSharedStateUpdatedAt();
+        if (remoteUpdatedAt && remoteUpdatedAt === lastSharedUpdatedAt) return sharedAppData(app);
+        const row = await fetchSharedStateFull();
+        const latest = row && row.data ? normalizeApp(row.data) : createEmptyApp();
         const deleteIds = new Set(snapshot.deletedProfileIds.filter(Boolean));
         const deletedPlanIds = new Set((snapshot.deletedPlanIds || []).filter(Boolean));
         const deletedFolderIds = new Set((snapshot.deletedFolderIds || []).filter(Boolean));
@@ -8744,7 +8750,11 @@
       function startSharedSync() {
         stopSharedSync();
         subscribeRealtime();
-        syncTimer = setInterval(() => syncSharedStateFromCloud(), 10000);
+        syncTimer = setInterval(() => {
+          if (document.visibilityState === "visible") {
+            syncSharedStateFromCloud();
+          }
+        }, 300000);
       }
 
       function stopSharedSync() {
@@ -8768,22 +8778,13 @@
             if (!payload.new || payload.eventType === "DELETE") return;
             applyRemoteSharedState(payload.new).catch(error => console.warn("Falha ao aplicar atualização em tempo real:", error));
           })
-          .on("postgres_changes", {
-            event: "*",
-            schema: "public",
-            table: "user_profiles"
-          }, () => {
-            refreshTeamProfilesFromRealtime().catch(error => console.warn("Falha ao atualizar perfis em tempo real:", error));
-          })
           .on("presence", { event: "sync" }, () => {
             updateOnlineUsersFromPresence();
           })
           .subscribe(status => {
             if (status === "SUBSCRIBED" && currentUser && realtimeChannel) {
               realtimeChannel.track({
-                user_id: currentUser.id,
-                email: currentUser.email || "",
-                online_at: new Date().toISOString()
+                user_id: currentUser.id
               }).catch(error => console.warn("Falha ao registrar presença online:", error));
             }
             if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
@@ -8812,23 +8813,35 @@
         if (app.view === "profiles") renderProfiles();
       }
 
-      async function refreshTeamProfilesFromRealtime() {
-        if (!supabaseClient || !currentUser || !cloudReady) return;
-        await loadTeamProfiles();
-        if (app.view === "profiles") renderProfiles();
-      }
-
       async function syncSharedStateFromCloud(options = {}) {
         if (!supabaseClient || !currentUser || !cloudReady || isSavingCloud) return;
         if (!options.force && hasRecentLocalActivity()) return;
         if (!options.allowWhileEditing && isUserEditing()) return;
+        const remoteUpdatedAt = await fetchSharedStateUpdatedAt();
+        if (!remoteUpdatedAt || remoteUpdatedAt === lastSharedUpdatedAt) return;
+        const row = await fetchSharedStateFull();
+        if (!row || !row.data) return;
+        await applyRemoteSharedState(row, options);
+      }
+
+      async function fetchSharedStateUpdatedAt() {
+        const { data, error } = await supabaseClient
+          .from("shared_states")
+          .select("updated_at")
+          .eq("id", SHARED_STATE_ID)
+          .single();
+        if (error || !data) return "";
+        return data.updated_at || "";
+      }
+
+      async function fetchSharedStateFull() {
         const { data, error } = await supabaseClient
           .from("shared_states")
           .select("data, updated_at")
           .eq("id", SHARED_STATE_ID)
-          .maybeSingle();
-        if (error || !data || !data.data) return;
-        await applyRemoteSharedState(data, options);
+          .single();
+        if (error || !data) return null;
+        return data;
       }
 
       async function applyRemoteSharedState(row, options = {}) {
@@ -8840,7 +8853,6 @@
         lastSharedUpdatedAt = row.updated_at || "";
         localStorage.setItem(SHARED_STORAGE_KEY, JSON.stringify(app));
         selectedActions.clear();
-        await loadTeamProfiles();
         renderApp();
         if (app.view === "editor") markSaved();
       }
@@ -9092,6 +9104,71 @@
         });
       }
 
+      function compressImageFileToDataUrl(file, options = {}) {
+        return new Promise((resolve, reject) => {
+          if (!file || !file.type.startsWith("image/")) {
+            reject(new Error("Arquivo inválido"));
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = () => compressImageSourceToDataUrl(reader.result, options).then(resolve).catch(reject);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      }
+
+      function compressImageSourceToDataUrl(src, options = {}) {
+        const maxWidth = options.maxWidth || 900;
+        const quality = options.quality || 0.65;
+        return new Promise((resolve, reject) => {
+          if (!/^data:image\//i.test(String(src || ""))) {
+            reject(new Error("Imagem inválida"));
+            return;
+          }
+          const image = new Image();
+          image.onload = () => {
+            const ratio = image.naturalWidth > maxWidth ? maxWidth / image.naturalWidth : 1;
+            const width = Math.max(1, Math.round(image.naturalWidth * ratio));
+            const height = Math.max(1, Math.round(image.naturalHeight * ratio));
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            const context = canvas.getContext("2d");
+            context.fillStyle = "#ffffff";
+            context.fillRect(0, 0, width, height);
+            context.drawImage(image, 0, 0, width, height);
+            resolve(canvas.toDataURL("image/jpeg", quality));
+          };
+          image.onerror = () => reject(new Error("Imagem inválida"));
+          image.src = src;
+        });
+      }
+
+      function compressRichEditorImages(editor) {
+        const images = [...editor.querySelectorAll("img")]
+          .filter(image => /^data:image\//i.test(image.getAttribute("src") || image.src || ""))
+          .filter(image => image.dataset.sstCompressed !== "true");
+        if (!images.length) return Promise.resolve();
+        return Promise.all(images.map(image => {
+          if (!image.__sstCompressPromise) {
+            image.__sstCompressPromise = compressImageSourceToDataUrl(image.src, { maxWidth: 900, quality: 0.65 })
+              .then(dataUrl => {
+                image.src = dataUrl;
+                image.dataset.sstCompressed = "true";
+              })
+              .catch(error => {
+                console.error(error);
+                image.removeAttribute("src");
+                image.dataset.sstCompressed = "true";
+              })
+              .finally(() => {
+                delete image.__sstCompressPromise;
+              });
+          }
+          return image.__sstCompressPromise;
+        })).then(() => undefined);
+      }
+
       function imageFileToAvatarDataUrl(file) {
         return new Promise((resolve, reject) => {
           if (!file || !file.type.startsWith("image/")) {
@@ -9102,7 +9179,7 @@
           reader.onload = () => {
             const image = new Image();
             image.onload = () => {
-              const size = 320;
+              const size = AVATAR_CANVAS_SIZE;
               const canvas = document.createElement("canvas");
               canvas.width = size;
               canvas.height = size;
@@ -9113,7 +9190,7 @@
               const sx = (image.width - sourceSize) / 2;
               const sy = (image.height - sourceSize) / 2;
               context.drawImage(image, sx, sy, sourceSize, sourceSize, 0, 0, size, size);
-              resolve(canvas.toDataURL("image/jpeg", 0.82));
+              resolve(canvas.toDataURL("image/jpeg", 0.62));
             };
             image.onerror = () => reject(new Error("Imagem inválida"));
             image.src = reader.result;
