@@ -57,6 +57,10 @@
       line-height: 1.45;
     }
 
+    body.restricted-readonly {
+      padding-top: 42px;
+    }
+
     button,
     input,
     select,
@@ -70,6 +74,25 @@
 
     .hidden {
       display: none !important;
+    }
+
+    .restricted-readonly-banner {
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 1200;
+      width: 100%;
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-bottom: 1px solid #fde68a;
+      background: #fffbeb;
+      color: #92400e;
+      padding: 9px 18px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 900;
     }
 
     .screen {
@@ -2999,6 +3022,12 @@
       border-color: #60a5fa;
     }
 
+    html[data-theme="dark"] .restricted-readonly-banner {
+      border-bottom-color: #92400e;
+      background: #451a03;
+      color: #fde68a;
+    }
+
     @media (max-width: 1024px) {
       html[data-theme="dark"] .folder-item,
       html[data-theme="dark"] tbody tr,
@@ -3516,6 +3545,7 @@
   </style>
 </head>
 <body>
+  <div class="restricted-readonly-banner hidden" id="restrictedReadonlyBanner">Acesso em modo somente leitura</div>
   <main id="authScreen" class="screen auth-screen">
     <div class="shell">
       <header class="app-title">
@@ -3987,7 +4017,7 @@
   <section class="modal hidden" id="logModal" aria-modal="true" role="dialog">
     <div class="modal-card">
       <div class="modal-head">
-        <h2>Log de exclusões</h2>
+        <h2>Log do sistema</h2>
         <button class="button icon-only" type="button" data-close-modal="logModal" aria-label="Fechar">
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
         </button>
@@ -3995,8 +4025,8 @@
       <div class="activity-log-panel">
         <div class="activity-log-head">
           <div>
-            <h3>Exclusões registradas</h3>
-            <span>Mostra quem apagou perfil, pasta ou plano de ação.</span>
+            <h3>Exclusões e acessos restritos</h3>
+            <span>Mostra quem apagou perfil, pasta ou plano e tentativas bloqueadas do modo somente leitura.</span>
           </div>
           <button class="button" type="button" id="refreshLogBtn">Atualizar</button>
         </div>
@@ -4183,15 +4213,17 @@
       const THEME_KEY = "planoDeAcaoSST.theme.v1";
       const THEME_USER_PREFIX = "planoDeAcaoSST.theme.user.";
       const MAX_ACTIVITY_LOG = 500;
-      const LOGGED_ACTIVITY_ACTIONS = new Set(["Excluiu perfil", "Excluiu pasta", "Excluiu plano"]);
+      const RESTRICTED_ATTEMPT_ACTION = "Tentativa de acesso restrito";
+      const LOGGED_ACTIVITY_ACTIONS = new Set(["Excluiu perfil", "Excluiu pasta", "Excluiu plano", RESTRICTED_ATTEMPT_ACTION]);
       const DEFAULT_FOLDER_ID = "default-folder";
       const PRIORITIES = ["Alta", "Média", "Baixa"];
       const STATUSES = ["Não iniciado", "Em andamento", "Concluído", "Cancelado"];
       const DEFAULT_RESPONSIBLES = ["Empresa", "Empresa/Consultoria", "Consultoria", "RH", "SESMT", "CIPA", "Brigada", "Medicina do Trabalho"];
       const AVATAR_COLORS = ["#2563eb", "#0f766e", "#7c3aed", "#b45309", "#be123c", "#475569", "#0369a1", "#15803d"];
       const FOLDER_COLORS = ["#2563eb", "#0f766e", "#7c3aed", "#b45309", "#be123c", "#475569", "#0891b2", "#16a34a"];
-      const AVATAR_CANVAS_SIZE = 160;
+      const AVATAR_CANVAS_SIZE = 320;
       const DEFAULT_DESCRIPTION = "A execução de cada uma das ações propostas configura um fator relevante para a redução dos riscos identificados, por isso deve ser considerado os responsáveis para que seja possível a aplicação de um ciclo de melhoria contínua (PDCA), onde após a realização de cada ação seja realizada uma nova análise dos riscos trabalhados e então atualizado o inventário de riscos.";
+      const RESTRICTED_ADMIN_EMAILS = new Set(["administrativo@protege.med.br"]);
 
       let app = createEmptyApp();
       let supabaseClient = null;
@@ -4202,6 +4234,7 @@
       let authRedirectMessage = "";
       let pendingPasswordRecovery = false;
       let passwordRecoveryMode = false;
+      let restrictedAccessLogs = [];
       let teamProfiles = [];
       let pendingProtectedAction = null;
       let syncTimer = null;
@@ -4238,6 +4271,7 @@
         authEmail: document.getElementById("authEmail"),
         authPassword: document.getElementById("authPassword"),
         authMessage: document.getElementById("authMessage"),
+        restrictedReadonlyBanner: document.getElementById("restrictedReadonlyBanner"),
         passwordMessage: document.getElementById("passwordMessage"),
         switchUserMessage: document.getElementById("switchUserMessage"),
         profileScreen: document.getElementById("profileScreen"),
@@ -4350,6 +4384,117 @@
         if (label) label.textContent = isDark ? "Modo dark" : "Modo light";
       }
 
+      function isRestrictedAdminEmail(email) {
+        return RESTRICTED_ADMIN_EMAILS.has(String(email || "").trim().toLocaleLowerCase("pt-BR"));
+      }
+
+      function isRestrictedAdminUser(user = currentUser) {
+        return !!user && isRestrictedAdminEmail(user.email);
+      }
+
+      function enforceRestrictedAdminView() {
+        if (!isRestrictedAdminUser()) return false;
+        selectedActions.clear();
+        ["profileModal", "folderModal", "planModal", "logModal", "switchUserModal"].forEach(id => {
+          const modal = document.getElementById(id);
+          if (modal) modal.classList.add("hidden");
+        });
+        hideFolderContextMenu();
+        hideRichToolbar();
+        return true;
+      }
+
+      function warnRestrictedAdminAccess() {
+        if (!isRestrictedAdminUser()) return false;
+        return true;
+      }
+
+      function blockRestrictedAdminAccess(detail = "Tentativa bloqueada de executar ação restrita.") {
+        if (!isRestrictedAdminUser()) return false;
+        recordRestrictedAttempt(detail);
+        enforceRestrictedAdminView();
+        saveApp({ localOnly: true });
+        renderApp();
+        return true;
+      }
+
+      function recordRestrictedAttempt(detail) {
+        if (!isRestrictedAdminUser()) return null;
+        const profile = currentProfile();
+        const plan = currentPlan();
+        const entry = {
+          id: createId(),
+          at: new Date().toISOString(),
+          action: RESTRICTED_ATTEMPT_ACTION,
+          detail: detail || "Tentativa bloqueada no modo somente leitura operacional.",
+          userId: currentUser ? currentUser.id : "",
+          userEmail: currentUser ? currentUser.email || "" : "",
+          userName: "",
+          profileId: profile ? profile.id || "" : "",
+          profileName: profile ? profile.name || "" : "",
+          planId: plan ? plan.id || "" : "",
+          planTitle: plan ? plan.title || "" : ""
+        };
+        restrictedAccessLogs = normalizeActivityLog([entry, ...restrictedAccessLogs]);
+        saveRestrictedAccessAttempt(entry).catch(error => console.warn("Não foi possível registrar a tentativa restrita:", error));
+        return entry;
+      }
+
+      async function saveRestrictedAccessAttempt(entry) {
+        if (!supabaseClient || !currentUser || !entry) return;
+        const { error } = await supabaseClient
+          .from("restricted_access_logs")
+          .insert({
+            user_id: entry.userId,
+            user_email: entry.userEmail,
+            detail: entry.detail,
+            profile_id: entry.profileId,
+            profile_name: entry.profileName,
+            plan_id: entry.planId,
+            plan_title: entry.planTitle,
+            created_at: entry.at
+          });
+        if (error) throw error;
+      }
+
+      async function loadRestrictedAccessLogs() {
+        if (!supabaseClient || !currentUser || isRestrictedAdminUser()) {
+          restrictedAccessLogs = [];
+          return;
+        }
+        const { data, error } = await supabaseClient
+          .from("restricted_access_logs")
+          .select("id, created_at, user_id, user_email, detail, profile_id, profile_name, plan_id, plan_title")
+          .order("created_at", { ascending: false })
+          .limit(120);
+        if (error) {
+          console.warn("Log de acessos restritos indisponível:", error);
+          restrictedAccessLogs = [];
+          return;
+        }
+        restrictedAccessLogs = normalizeActivityLog((data || []).map(row => ({
+          id: row.id || createId(),
+          at: row.created_at || new Date().toISOString(),
+          action: RESTRICTED_ATTEMPT_ACTION,
+          detail: row.detail || "",
+          userId: row.user_id || "",
+          userEmail: row.user_email || "",
+          userName: "",
+          profileId: row.profile_id || "",
+          profileName: row.profile_name || "",
+          planId: row.plan_id || "",
+          planTitle: row.plan_title || ""
+        })));
+      }
+
+      function updateRestrictedAdminUi() {
+        const restricted = isRestrictedAdminUser();
+        document.body.classList.toggle("restricted-readonly", restricted);
+        if (els.restrictedReadonlyBanner) {
+          els.restrictedReadonlyBanner.classList.toggle("hidden", !restricted);
+        }
+      }
+
       function recordActivity(action, detail = "", context = {}) {
         if (!LOGGED_ACTIVITY_ACTIONS.has(action)) return null;
         if (!app || !Array.isArray(app.activityLog)) app.activityLog = [];
@@ -4380,11 +4525,11 @@
       function renderActivityLog() {
         const list = document.getElementById("activityLogList");
         if (!list) return;
-        const entries = normalizeActivityLog(app.activityLog || [])
+        const entries = normalizeActivityLog([...(app.activityLog || []), ...restrictedAccessLogs])
           .filter(entry => LOGGED_ACTIVITY_ACTIONS.has(entry.action))
           .slice(0, 120);
         if (!entries.length) {
-          list.innerHTML = '<div class="empty-state">Nenhuma exclusão registrada ainda.</div>';
+          list.innerHTML = '<div class="empty-state">Nenhum registro de exclusão ou acesso restrito ainda.</div>';
           return;
         }
         list.innerHTML = entries.map(entry => `
@@ -4411,8 +4556,10 @@
           openPasswordModal();
         });
         document.getElementById("settingsLogBtn").addEventListener("click", async () => {
+          if (blockRestrictedAdminAccess("Tentou consultar o log do sistema.")) return;
           closeModal("settingsModal");
           await syncSharedStateFromCloud({ force: true, allowWhileEditing: true });
+          await loadRestrictedAccessLogs();
           renderActivityLog();
           openModal("logModal");
         });
@@ -4447,7 +4594,9 @@
         photoCanvas.addEventListener("pointerup", handleProfilePhotoPointerUp);
         photoCanvas.addEventListener("pointercancel", handleProfilePhotoPointerUp);
         document.getElementById("refreshLogBtn").addEventListener("click", async () => {
+          if (blockRestrictedAdminAccess()) return;
           await syncSharedStateFromCloud({ force: true, allowWhileEditing: true });
+          await loadRestrictedAccessLogs();
           renderActivityLog();
         });
         document.querySelectorAll("[data-close-modal]").forEach(button => {
@@ -4472,6 +4621,11 @@
         });
 
         els.planTitleInput.addEventListener("input", () => {
+          if (isRestrictedAdminUser()) {
+            const plan = currentPlan();
+            if (plan) els.planTitleInput.value = plan.title;
+            return;
+          }
           const plan = currentPlan();
           if (!plan) return;
           plan.title = els.planTitleInput.value || "Plano sem nome";
@@ -4488,7 +4642,10 @@
         document.getElementById("printBtn").addEventListener("click", exportExecutivePdf);
         document.getElementById("exportJpegBtn").addEventListener("click", exportExecutiveJpeg);
         document.getElementById("exportJsonBtn").addEventListener("click", exportJson);
-        document.getElementById("importJsonBtn").addEventListener("click", () => document.getElementById("importJsonInput").click());
+        document.getElementById("importJsonBtn").addEventListener("click", () => {
+          if (blockRestrictedAdminAccess()) return;
+          document.getElementById("importJsonInput").click();
+        });
         document.getElementById("importJsonInput").addEventListener("change", importJson);
         document.querySelectorAll("[data-add-section]").forEach(button => {
           button.addEventListener("click", () => addRow(button.dataset.addSection));
@@ -4655,9 +4812,10 @@
           app.activePlanId = null;
           cloudReady = true;
           startSharedSync();
-          const ownProfile = updateOwnLastAccess();
+          const ownProfile = isRestrictedAdminUser(user) ? null : updateOwnLastAccess();
           recordActivity("Entrou no sistema", `Login realizado por ${user.email || "usuário"}.`, { profile: ownProfile || null });
-          saveApp({ profileId: ownProfile ? ownProfile.id : currentUser.id });
+          if (ownProfile) saveApp({ profileId: ownProfile.id });
+          else saveApp({ localOnly: true });
           renderApp();
           setAuthMessage(`Conectado como ${user.email || "usuário"}.`, "ok");
           if (pendingPasswordRecovery) {
@@ -4722,7 +4880,13 @@
 
       function openSettingsModal() {
         document.getElementById("settingsUserEmail").textContent = currentUser && currentUser.email ? currentUser.email : "Usuário conectado";
-        renderActivityLog();
+        document.getElementById("settingsLogBtn").classList.toggle("hidden", isRestrictedAdminUser());
+        if (isRestrictedAdminUser()) {
+          const list = document.getElementById("activityLogList");
+          if (list) list.innerHTML = "";
+        } else {
+          renderActivityLog();
+        }
         openModal("settingsModal");
       }
 
@@ -4889,7 +5053,7 @@
       }
 
       async function mergeLocalCacheIntoCloud(cloudApp, localApp) {
-        if (!currentUser || !localApp || !Array.isArray(localApp.profiles) || !localApp.profiles.length) return cloudApp;
+        if (!currentUser || isRestrictedAdminUser() || !localApp || !Array.isArray(localApp.profiles) || !localApp.profiles.length) return cloudApp;
         const migrationKey = `${LOCAL_MIGRATION_KEY}.${currentUser.id}`;
         if (localStorage.getItem(migrationKey)) return cloudApp;
 
@@ -4972,6 +5136,7 @@
 
       function ensureSinglePrivateProfile() {
         if (!currentUser) return null;
+        if (isRestrictedAdminUser()) return null;
         if (app.hiddenUserProfileIds.includes(currentUser.id)) return null;
         const userEmail = normalizeText(currentUser.email || "");
         let profile = app.profiles.find(item => item.userId === currentUser.id)
@@ -5013,7 +5178,7 @@
           teamProfiles = [];
           return;
         }
-        const own = ensureSinglePrivateProfile();
+        const own = isRestrictedAdminUser() ? null : ensureSinglePrivateProfile();
         try {
           const { data, error } = await supabaseClient
             .from("user_profiles")
@@ -5071,7 +5236,7 @@
       }
 
       async function syncOwnPublicProfile(profile) {
-        if (!supabaseClient || !currentUser) return;
+        if (!supabaseClient || !currentUser || isRestrictedAdminUser()) return;
         const row = {
           user_id: currentUser.id,
           display_name: profile.name,
@@ -5093,6 +5258,7 @@
       }
 
       async function publishOwnProfileIfNeeded() {
+        if (isRestrictedAdminUser()) return null;
         const profile = ensureSinglePrivateProfile();
         if (!supabaseClient || !currentUser || !profile) return profile;
         const existing = await getOwnPublicProfileRow();
@@ -5373,6 +5539,7 @@
 
       function renderApp() {
         const showAuth = !currentUser;
+        updateRestrictedAdminUi();
         els.authScreen.classList.toggle("hidden", !showAuth);
         if (showAuth) {
           els.profileScreen.classList.add("hidden");
@@ -5380,6 +5547,7 @@
           els.editorScreen.classList.add("hidden");
           return;
         }
+        enforceRestrictedAdminView();
         els.profileScreen.classList.toggle("hidden", app.view !== "profiles");
         els.folderScreen.classList.toggle("hidden", app.view !== "folders");
         els.editorScreen.classList.toggle("hidden", app.view !== "editor");
@@ -5437,12 +5605,15 @@
           const isOnline = presenceUserId && onlineUserIds.has(presenceUserId);
           const lastAccessText = privateProfile && privateProfile.lastAccess ? formatDateTime(privateProfile.lastAccess) : "sem registro";
           const lastAccessHtml = isOnline ? "" : `<div class="last-access">Último acesso: ${escapeHtml(lastAccessText)}</div>`;
-          card.innerHTML = `
-            <div class="profile-top">
-              ${avatarHtml(profile)}
+          const profileActionsHtml = isRestrictedAdminUser() ? "" : `
               <div class="profile-actions">
                 <button class="button icon-only" type="button" data-profile-action="edit" title="Editar perfil" aria-label="Editar perfil">${icons.edit}</button>
               </div>
+            `;
+          card.innerHTML = `
+            <div class="profile-top">
+              ${avatarHtml(profile)}
+              ${profileActionsHtml}
             </div>
             <div>
               <h2 class="profile-name">${escapeHtml(profile.name)}</h2>
@@ -5458,7 +5629,7 @@
           els.profileGrid.appendChild(card);
         });
 
-        if (currentUser && !currentUserOwnProfile()) {
+        if (currentUser && !isRestrictedAdminUser() && !currentUserOwnProfile()) {
           const createCard = document.createElement("button");
           createCard.className = "new-profile-card";
           createCard.type = "button";
@@ -5471,6 +5642,7 @@
 
       function currentUserOwnProfile() {
         if (!currentUser) return null;
+        if (isRestrictedAdminUser()) return null;
         const email = normalizeText(currentUser.email || "");
         return app.profiles.find(profile => {
           if (profile.userId && app.hiddenUserProfileIds.includes(profile.userId)) return false;
@@ -5490,6 +5662,7 @@
 
       async function createCurrentUserProfile() {
         if (!currentUser) return;
+        if (blockRestrictedAdminAccess()) return;
         app.hiddenUserProfileIds = app.hiddenUserProfileIds.filter(userId => userId !== currentUser.id);
         const profile = ensureSinglePrivateProfile();
         if (!profile) {
@@ -5510,7 +5683,7 @@
 
       function getVisibleTeamProfiles() {
         const profileCards = app.profiles
-          .filter(profile => !profile.userId || !app.hiddenUserProfileIds.includes(profile.userId))
+          .filter(profile => !isRestrictedAdminEmail(profile.email) && (!profile.userId || !app.hiddenUserProfileIds.includes(profile.userId)))
           .map(profile => ({
           id: profile.id,
           userId: profile.userId || profile.id,
@@ -5523,7 +5696,7 @@
           updatedAt: profile.lastEdited || profile.createdAt
         }));
         teamProfiles.forEach(publicProfile => {
-          if (!app.hiddenUserProfileIds.includes(publicProfile.userId) && !profileCards.some(profile => profile.userId && profile.userId === publicProfile.userId)) {
+          if (!isRestrictedAdminEmail(publicProfile.email) && !app.hiddenUserProfileIds.includes(publicProfile.userId) && !profileCards.some(profile => profile.userId && profile.userId === publicProfile.userId)) {
             profileCards.push(publicProfile);
           }
         });
@@ -5538,9 +5711,11 @@
         const action = event.target.closest("[data-profile-action]");
         if (action) {
           event.stopPropagation();
+          if (blockRestrictedAdminAccess()) return;
           requirePasswordForProfileAction(action.dataset.profileAction, profileId || userId);
           return;
         }
+        warnRestrictedAdminAccess();
         const profile = getOrCreateSharedProfile(profileId, userId);
         app.activeProfileId = profile.id;
         app.activeFolderId = DEFAULT_FOLDER_ID;
@@ -5574,6 +5749,7 @@
       }
 
       function requirePasswordForProfileAction(action, profileId) {
+        if (blockRestrictedAdminAccess()) return;
         const profile = app.profiles.find(item => item.id === profileId) || getOrCreateSharedProfile(profileId, profileId);
         if (!profile.email) {
           alert("Este perfil não tem e-mail vinculado. Edite o perfil e vincule um e-mail antes de proteger por senha.");
@@ -5589,6 +5765,7 @@
       }
 
       function openProfileModal(profileId) {
+        if (blockRestrictedAdminAccess()) return;
         const profile = profileId ? app.profiles.find(item => item.id === profileId) : null;
         document.getElementById("profileModalTitle").textContent = profile ? "Editar Perfil" : "Configurar Perfil";
         document.getElementById("profileIdInput").value = profile ? profile.id : "";
@@ -5611,6 +5788,7 @@
 
       async function saveProfileFromModal(event) {
         event.preventDefault();
+        if (blockRestrictedAdminAccess()) return;
         const id = document.getElementById("profileIdInput").value;
         const previousProfile = id ? deepClone(app.profiles.find(item => item.id === id) || {}) : null;
         const name = document.getElementById("profileNameInput").value.trim();
@@ -5685,6 +5863,7 @@
       }
 
       async function deleteProfileFromModal() {
+        if (blockRestrictedAdminAccess()) return;
         const profileId = document.getElementById("profileDeleteBtn").dataset.profileId || document.getElementById("profileIdInput").value;
         if (!profileId) return;
         const deleted = await deleteProfile(profileId);
@@ -5692,6 +5871,7 @@
       }
 
       async function deleteProfile(profileId) {
+        if (blockRestrictedAdminAccess()) return false;
         const profile = app.profiles.find(item => item.id === profileId);
         if (!profile) return false;
         if (!confirm(`Excluir o perfil "${profile.name}" e todos os planos dele?`)) return false;
@@ -5925,7 +6105,7 @@
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, AVATAR_CANVAS_SIZE, AVATAR_CANVAS_SIZE);
         drawProfilePhotoImage(ctx, profilePhotoEditor);
-        return canvas.toDataURL("image/jpeg", 0.62);
+        return canvas.toDataURL("image/jpeg", 0.86);
       }
 
       function loadImageElement(source) {
@@ -5940,6 +6120,8 @@
       function renderFoldersScreen() {
         const profile = currentProfile();
         if (!profile) return showProfiles();
+        document.getElementById("newPlanBtn").classList.toggle("hidden", isRestrictedAdminUser());
+        document.getElementById("newFolderBtn").classList.toggle("hidden", isRestrictedAdminUser());
         ensureDefaultFolder(profile);
         renderActiveProfile(profile);
         renderFolders(profile);
@@ -5984,10 +6166,22 @@
         }
         plans.forEach(plan => {
           const stats = getPlanStats(plan);
+          const readOnly = isRestrictedAdminUser();
           const card = document.createElement("article");
           card.className = "plan-card";
           card.dataset.planId = plan.id;
-          card.draggable = true;
+          card.draggable = !readOnly;
+          const planActionsHtml = readOnly
+            ? '<button class="button primary" type="button" data-plan-action="open">Abrir</button>'
+            : `
+              <button class="button primary" type="button" data-plan-action="open">Abrir</button>
+              <button class="button" type="button" data-plan-action="duplicate">Duplicar</button>
+              <select data-plan-move aria-label="Mover para pasta">
+                <option value="">Mover para pasta...</option>
+                ${profile.folders.map(folder => `<option value="${escapeAttr(folder.id)}">${escapeHtml(folder.name)}</option>`).join("")}
+              </select>
+              <button class="button danger" type="button" data-plan-action="delete">Excluir</button>
+            `;
           card.innerHTML = `
             <div>
               <h3 class="plan-title">${escapeHtml(plan.title)}</h3>
@@ -6010,13 +6204,7 @@
               <span class="mini-badge badge-done">${stats.done} concluídas</span>
             </div>
             <div class="plan-actions">
-              <button class="button primary" type="button" data-plan-action="open">Abrir</button>
-              <button class="button" type="button" data-plan-action="duplicate">Duplicar</button>
-              <select data-plan-move aria-label="Mover para pasta">
-                <option value="">Mover para pasta...</option>
-                ${profile.folders.map(folder => `<option value="${escapeAttr(folder.id)}">${escapeHtml(folder.name)}</option>`).join("")}
-              </select>
-              <button class="button danger" type="button" data-plan-action="delete">Excluir</button>
+              ${planActionsHtml}
             </div>
           `;
           els.plansGrid.appendChild(card);
@@ -6026,12 +6214,14 @@
       function handleFolderClick(event) {
         const item = event.target.closest(".folder-item");
         if (!item || event.target.closest("[contenteditable='true']")) return;
+        warnRestrictedAdminAccess();
         app.activeFolderId = item.dataset.folderId;
         saveApp({ localOnly: true });
         renderFoldersScreen();
       }
 
       function handleFolderDoubleClick(event) {
+        if (blockRestrictedAdminAccess()) return;
         const nameEl = event.target.closest("[data-folder-name]");
         const item = event.target.closest(".folder-item");
         if (!nameEl || !item) return;
@@ -6069,6 +6259,7 @@
       }
 
       function handleFolderContext(event) {
+        if (blockRestrictedAdminAccess()) return;
         const item = event.target.closest(".folder-item");
         if (!item) return;
         event.preventDefault();
@@ -6079,6 +6270,7 @@
       }
 
       function handleFolderContextAction(event) {
+        if (blockRestrictedAdminAccess()) return;
         const action = event.target.dataset.folderContext;
         if (!action || !selectedFolderForContext) return;
         hideFolderContextMenu();
@@ -6092,6 +6284,7 @@
       }
 
       function handleFolderDragOver(event) {
+        if (isRestrictedAdminUser()) return;
         const item = event.target.closest(".folder-item");
         if (!item || !draggingPlanId) return;
         event.preventDefault();
@@ -6104,6 +6297,7 @@
       }
 
       function handleFolderDrop(event) {
+        if (blockRestrictedAdminAccess()) return;
         const item = event.target.closest(".folder-item");
         if (!item || !draggingPlanId) return;
         event.preventDefault();
@@ -6122,6 +6316,7 @@
       }
 
       function openFolderModal(folderId) {
+        if (blockRestrictedAdminAccess()) return;
         const profile = currentProfile();
         const folder = profile && profile.folders.find(item => item.id === folderId);
         if (folder && folder.isDefault) {
@@ -6138,6 +6333,7 @@
 
       function saveFolderFromModal(event) {
         event.preventDefault();
+        if (blockRestrictedAdminAccess()) return;
         const profile = currentProfile();
         if (!profile) return;
         const id = document.getElementById("folderIdInput").value;
@@ -6168,6 +6364,7 @@
       }
 
       function duplicateFolder(folderId) {
+        if (blockRestrictedAdminAccess()) return;
         const profile = currentProfile();
         const folder = profile.folders.find(item => item.id === folderId);
         if (!folder) return;
@@ -6190,6 +6387,7 @@
       }
 
       function deleteFolder(folderId) {
+        if (blockRestrictedAdminAccess()) return;
         const profile = currentProfile();
         const folder = profile.folders.find(item => item.id === folderId);
         if (!folder) return;
@@ -6212,6 +6410,7 @@
       }
 
       function openPlanModal() {
+        if (blockRestrictedAdminAccess()) return;
         const profile = currentProfile();
         if (!profile) return;
         document.getElementById("planNameInput").value = "";
@@ -6225,6 +6424,7 @@
 
       function createPlanFromModal(event) {
         event.preventDefault();
+        if (blockRestrictedAdminAccess()) return;
         const profile = currentProfile();
         if (!profile) return;
         const title = document.getElementById("planNameInput").value.trim();
@@ -6261,9 +6461,12 @@
         const plan = profile.plans.find(item => item.id === card.dataset.planId);
         if (!plan) return;
         if (action.dataset.planAction === "open") {
+          warnRestrictedAdminAccess();
           recordActivity("Abriu plano", `Abriu o plano ${plan.title}.`, { profile, plan });
           showEditor(plan.id);
+          return;
         }
+        if (blockRestrictedAdminAccess()) return;
         if (action.dataset.planAction === "duplicate") {
           const copy = duplicatePlanObject(plan, plan.folderId);
           profile.plans.push(copy);
@@ -6281,6 +6484,7 @@
       }
 
       function handlePlanMove(event) {
+        if (blockRestrictedAdminAccess()) return;
         const select = event.target.closest("[data-plan-move]");
         if (!select || !select.value) return;
         const card = select.closest(".plan-card");
@@ -6298,6 +6502,10 @@
       }
 
       function handlePlanDragStart(event) {
+        if (isRestrictedAdminUser()) {
+          event.preventDefault();
+          return;
+        }
         const card = event.target.closest(".plan-card");
         if (!card) return;
         draggingPlanId = card.dataset.planId;
@@ -6332,26 +6540,45 @@
         const plan = currentPlan();
         if (!plan) return showFolders();
         els.planTitleInput.value = plan.title;
+        els.planTitleInput.readOnly = isRestrictedAdminUser();
+        renderRestrictedEditorUi();
         renderMetaFields();
         renderResponsibleControls();
         renderEditorTables();
         markSaved();
       }
 
+      function renderRestrictedEditorUi() {
+        const readOnly = isRestrictedAdminUser();
+        ["loadTemplateBtn", "exportJsonBtn", "importJsonBtn", "applyBulkStatus", "deleteSelected"].forEach(id => {
+          const element = document.getElementById(id);
+          if (element) element.classList.toggle("hidden", readOnly);
+        });
+        if (els.bulkStatus) els.bulkStatus.classList.toggle("hidden", readOnly);
+        if (els.selectAllActions) els.selectAllActions.disabled = readOnly;
+        document.querySelectorAll("[data-add-section]").forEach(button => {
+          button.classList.toggle("hidden", readOnly);
+        });
+      }
+
       function renderMetaFields() {
         const plan = currentPlan();
         if (!plan) return;
+        const readOnly = isRestrictedAdminUser();
         document.querySelectorAll("[data-meta]").forEach(field => {
           const key = field.dataset.meta;
-          if (field.isContentEditable) {
+          if (field.classList && field.classList.contains("editable-text")) {
             field.textContent = plan.data.meta[key] || "";
+            field.contentEditable = readOnly ? "false" : "true";
           } else {
             field.value = plan.data.meta[key] || "";
+            field.disabled = readOnly;
           }
         });
       }
 
       function handleMetaInput(event) {
+        if (isRestrictedAdminUser()) return;
         const plan = currentPlan();
         if (!plan) return;
         const field = event.currentTarget;
@@ -6395,31 +6622,33 @@
         const tr = document.createElement("tr");
         tr.dataset.section = section;
         tr.dataset.id = row.id;
-        tr.draggable = true;
+        tr.draggable = !isRestrictedAdminUser();
         tr.innerHTML = section === "actions" ? actionRowHtml(row, index) : section === "equipment" ? equipmentRowHtml(row, index) : trainingRowHtml(row, index);
         return tr;
       }
 
       function itemCellHtml(row, index, selectable) {
-        const checkbox = selectable ? `<input class="row-check" type="checkbox" data-select-row ${selectedActions.has(row.id) ? "checked" : ""} aria-label="Selecionar item ${index}">` : "";
+        const readOnly = isRestrictedAdminUser();
+        const checkbox = selectable && !readOnly ? `<input class="row-check" type="checkbox" data-select-row ${selectedActions.has(row.id) ? "checked" : ""} aria-label="Selecionar item ${index}">` : "";
+        const dragHandle = readOnly ? "" : '<span class="drag-handle" title="Arrastar para reordenar" aria-hidden="true">::</span>';
         return `
           <div class="item-cell ${selectable ? "" : "no-checkbox"}">
             ${checkbox}
-            <span class="drag-handle" title="Arrastar para reordenar" aria-hidden="true">::</span>
+            ${dragHandle}
             <span class="item-number">${index}</span>
           </div>
         `;
       }
 
       function richEditorHtml(field, value, placeholder) {
-        return `<div class="rich-editor" contenteditable="true" spellcheck="true" data-field="${field}" data-placeholder="${escapeAttr(placeholder)}">${sanitizeRichHtml(value || "")}</div>`;
+        return `<div class="rich-editor" contenteditable="${isRestrictedAdminUser() ? "false" : "true"}" spellcheck="true" data-field="${field}" data-placeholder="${escapeAttr(placeholder)}">${sanitizeRichHtml(value || "")}</div>`;
       }
 
       function actionRowHtml(row, index) {
         return `
           <td>${itemCellHtml(row, index, true)}</td>
           <td>${richEditorHtml("actionHtml", row.actionHtml, "Descreva a ação recomendada. Cole ou arraste imagens aqui.")}</td>
-          <td><input class="table-input" data-field="responsible" list="responsibleSuggestions" value="${escapeAttr(row.responsible)}"></td>
+          <td><input class="table-input" data-field="responsible" list="responsibleSuggestions" value="${escapeAttr(row.responsible)}" ${isRestrictedAdminUser() ? "readonly" : ""}></td>
           <td>${whenCellHtml(row.when)}</td>
           <td>${selectHtml("priority", row.priority, PRIORITIES, "priority-select " + priorityClass(row.priority))}</td>
           <td>${selectHtml("status", row.status, STATUSES, "status-select " + statusClass(row.status))}</td>
@@ -6432,7 +6661,7 @@
         return `
           <td>${itemCellHtml(row, index, false)}</td>
           <td>${richEditorHtml("descriptionHtml", row.descriptionHtml, "Descreva o equipamento. Cole imagens aqui.")}</td>
-          <td><input class="table-input" data-field="responsible" list="responsibleSuggestions" value="${escapeAttr(row.responsible)}"></td>
+          <td><input class="table-input" data-field="responsible" list="responsibleSuggestions" value="${escapeAttr(row.responsible)}" ${isRestrictedAdminUser() ? "readonly" : ""}></td>
           <td>${selectHtml("status", row.status, STATUSES, "status-select " + statusClass(row.status))}</td>
           <td>${richEditorHtml("observationHtml", row.observationHtml, "Observações e imagens.")}</td>
           <td class="no-print">${rowActionButtons(row)}</td>
@@ -6443,7 +6672,7 @@
         return `
           <td>${itemCellHtml(row, index, false)}</td>
           <td>${richEditorHtml("trainingHtml", row.trainingHtml, "Descreva o treinamento. Cole imagens aqui.")}</td>
-          <td><input class="table-input" data-field="responsible" list="responsibleSuggestions" value="${escapeAttr(row.responsible)}"></td>
+          <td><input class="table-input" data-field="responsible" list="responsibleSuggestions" value="${escapeAttr(row.responsible)}" ${isRestrictedAdminUser() ? "readonly" : ""}></td>
           <td>${whenCellHtml(row.when)}</td>
           <td>${selectHtml("status", row.status, STATUSES, "status-select " + statusClass(row.status))}</td>
           <td>${richEditorHtml("observationHtml", row.observationHtml, "Observações e imagens.")}</td>
@@ -6452,10 +6681,11 @@
       }
 
       function whenCellHtml(value) {
+        const readOnly = isRestrictedAdminUser();
         return `
           <div class="when-cell">
-            <div class="when-editor" contenteditable="true" spellcheck="true" data-field="when" data-placeholder="jan/26, jan/26-jan/27...">${escapeHtml(value || "")}</div>
-            <input class="date-picker" type="date" data-date-picker title="Selecionar data">
+            <div class="when-editor" contenteditable="${readOnly ? "false" : "true"}" spellcheck="true" data-field="when" data-placeholder="jan/26, jan/26-jan/27...">${escapeHtml(value || "")}</div>
+            <input class="date-picker ${readOnly ? "hidden" : ""}" type="date" data-date-picker title="Selecionar data" ${readOnly ? "disabled" : ""}>
           </div>
         `;
       }
@@ -6465,7 +6695,7 @@
         return `
           <div class="progress-control">
             <div class="progress-input-row">
-              <input class="table-input" data-field="progress" type="number" min="0" max="100" value="${progress}">
+              <input class="table-input" data-field="progress" type="number" min="0" max="100" value="${progress}" ${isRestrictedAdminUser() ? "readonly" : ""}>
               <span class="percent-symbol">%</span>
             </div>
             <div class="progress-track" aria-hidden="true"><div class="progress-fill" style="width: ${progress}%; background: ${progressColor(progress)}"></div></div>
@@ -6475,19 +6705,23 @@
 
       function selectHtml(field, value, options, className) {
         const optionHtml = options.map(option => `<option value="${escapeAttr(option)}" ${option === value ? "selected" : ""}>${escapeHtml(option)}</option>`).join("");
+        const disabled = isRestrictedAdminUser() ? "disabled" : "";
         if (field === "status") {
           const display = value === "Em andamento" ? "Em<br>Andamento" : escapeHtml(value || "-");
           return `
             <div class="select-shell status-shell ${statusClass(value)}">
               <span class="select-display">${display}</span>
-              <select class="table-select ${className}" data-field="${field}" aria-label="${escapeAttr(value || field)}">${optionHtml}</select>
+              <select class="table-select ${className}" data-field="${field}" aria-label="${escapeAttr(value || field)}" ${disabled}>${optionHtml}</select>
             </div>
           `;
         }
-        return `<select class="table-select ${className}" data-field="${field}" aria-label="${escapeAttr(value || field)}">${optionHtml}</select>`;
+        return `<select class="table-select ${className}" data-field="${field}" aria-label="${escapeAttr(value || field)}" ${disabled}>${optionHtml}</select>`;
       }
 
       function rowActionButtons(row) {
+        if (isRestrictedAdminUser()) {
+          return `<div class="row-actions"><div class="last-edit" title="${escapeAttr(formatDateTime(row.lastEdited))}">Editado: ${escapeHtml(formatDateTime(row.lastEdited))}</div></div>`;
+        }
         return `
           <div class="row-actions">
             <button class="button icon-only" type="button" data-action="duplicate" title="Duplicar linha" aria-label="Duplicar linha">${icons.copy}</button>
@@ -6498,6 +6732,7 @@
       }
 
       function handleTableInput(event) {
+        if (isRestrictedAdminUser()) return;
         const target = event.target;
         if (target.classList && target.classList.contains("rich-editor")) {
           saveRichEditor(target);
@@ -6522,6 +6757,7 @@
       }
 
       function handleTableChange(event) {
+        if (isRestrictedAdminUser()) return;
         const target = event.target;
         if (target.dataset.selectRow !== undefined) {
           const tr = target.closest("tr");
@@ -6556,6 +6792,7 @@
       }
 
       function handleTableClick(event) {
+        if (isRestrictedAdminUser()) return;
         const imageWrap = event.target.closest(".rt-image-wrap");
         if (imageWrap) {
           selectRichImage(imageWrap);
@@ -6571,6 +6808,7 @@
       }
 
       function saveRichEditor(editor) {
+        if (isRestrictedAdminUser()) return;
         const { row } = getRowFromElement(editor);
         if (!row) return;
         row[editor.dataset.field] = sanitizeRichHtml(editor.innerHTML);
@@ -6581,6 +6819,7 @@
       }
 
       function savePlainEditor(editor) {
+        if (isRestrictedAdminUser()) return;
         const { row } = getRowFromElement(editor);
         if (!row) return;
         row[editor.dataset.field] = (editor.innerText || editor.textContent || "").replace(/\u00a0/g, " ");
@@ -6590,6 +6829,7 @@
       }
 
       function addRow(section) {
+        if (blockRestrictedAdminAccess()) return;
         const now = new Date().toISOString();
         const base = { id: createId(), lastEdited: now, responsible: "", status: "Não iniciado", observationHtml: "" };
         const row = section === "actions"
@@ -6614,6 +6854,7 @@
       }
 
       function duplicateRow(section, id) {
+        if (blockRestrictedAdminAccess()) return;
         const rows = currentPlanData()[section];
         const index = rows.findIndex(row => row.id === id);
         if (index < 0) return;
@@ -6628,6 +6869,7 @@
       }
 
       function deleteRow(section, id) {
+        if (blockRestrictedAdminAccess()) return;
         const label = sectionLabels[section] || "linha";
         if (!confirm(`Excluir esta ${label}? Esta ação não pode ser desfeita.`)) return;
         currentPlanData()[section] = currentPlanData()[section].filter(row => row.id !== id);
@@ -6639,6 +6881,10 @@
       }
 
       function handleRowDragStart(event) {
+        if (isRestrictedAdminUser()) {
+          event.preventDefault();
+          return;
+        }
         if (event.target.closest(".rich-editor") || event.target.closest(".when-editor") || event.target.closest(".rt-image-wrap")) {
           event.preventDefault();
           return;
@@ -6659,6 +6905,7 @@
       }
 
       function handleRowDrop(event) {
+        if (blockRestrictedAdminAccess()) return;
         const tr = event.target.closest("tr[data-id]");
         if (!tr || !draggingRow || tr.dataset.section !== draggingRow.section || tr.dataset.id === draggingRow.id) return;
         event.preventDefault();
@@ -6686,6 +6933,7 @@
       }
 
       function toggleAllVisibleActions() {
+        if (isRestrictedAdminUser()) return;
         const visibleIds = currentPlanData().actions.filter(row => matchesFilters(row, "actions")).map(row => row.id);
         if (els.selectAllActions.checked) visibleIds.forEach(id => selectedActions.add(id));
         else visibleIds.forEach(id => selectedActions.delete(id));
@@ -6694,6 +6942,7 @@
       }
 
       function applyBulkStatus() {
+        if (blockRestrictedAdminAccess()) return;
         const status = els.bulkStatus.value;
         if (!status || !selectedActions.size) return;
         currentPlanData().actions.forEach(row => {
@@ -6710,6 +6959,7 @@
       }
 
       function deleteSelectedActions() {
+        if (blockRestrictedAdminAccess()) return;
         if (!selectedActions.size) return;
         if (!confirm(`Excluir ${selectedActions.size} ações selecionadas? Esta ação não pode ser desfeita.`)) return;
         const rowDeletes = Array.from(selectedActions).map(rowId => ({ section: "actions", rowId }));
@@ -6794,6 +7044,7 @@
       }
 
       function handleRichFocus(event) {
+        if (isRestrictedAdminUser()) return;
         const editor = event.target.closest(".rich-editor");
         if (!editor) return;
         activeRichEditor = editor;
@@ -6802,6 +7053,7 @@
       }
 
       function handleRichMouseup(event) {
+        if (isRestrictedAdminUser()) return;
         const editor = event.target.closest(".rich-editor");
         if (!editor) return;
         activeRichEditor = editor;
@@ -6810,6 +7062,7 @@
       }
 
       function handleRichKeyup(event) {
+        if (isRestrictedAdminUser()) return;
         const editor = event.target.closest(".rich-editor");
         if (!editor) return;
         activeRichEditor = editor;
@@ -6818,6 +7071,10 @@
       }
 
       function handleRichPaste(event) {
+        if (isRestrictedAdminUser()) {
+          event.preventDefault();
+          return;
+        }
         const plainEditor = event.target.closest(".when-editor");
         if (plainEditor) {
           event.preventDefault();
@@ -6842,6 +7099,7 @@
       }
 
       function handleRichDragOver(event) {
+        if (isRestrictedAdminUser()) return;
         const editor = event.target.closest(".rich-editor");
         if (!editor) return;
         const files = event.dataTransfer && event.dataTransfer.files ? [...event.dataTransfer.files] : [];
@@ -6851,6 +7109,7 @@
       }
 
       function handleRichDrop(event) {
+        if (isRestrictedAdminUser()) return;
         const editor = event.target.closest(".rich-editor");
         if (!editor) return;
         const files = event.dataTransfer && event.dataTransfer.files ? [...event.dataTransfer.files] : [];
@@ -6863,6 +7122,7 @@
       }
 
       function handleRichToolbarClick(event) {
+        if (isRestrictedAdminUser()) return;
         const commandButton = event.target.closest("[data-rich-command]");
         const clearButton = event.target.closest("[data-rich-clear]");
         if (!activeRichEditor) return;
@@ -6879,6 +7139,7 @@
       }
 
       function clearActiveRichEditor() {
+        if (isRestrictedAdminUser()) return;
         if (!activeRichEditor) return;
         if (selectedRichImage) {
           const editor = selectedRichImage.closest(".rich-editor");
@@ -6898,6 +7159,7 @@
       }
 
       function applyRichSize(event) {
+        if (isRestrictedAdminUser()) return;
         if (!activeRichEditor || !event.target.value) return;
         restoreRichSelection();
         document.execCommand("fontSize", false, event.target.value);
@@ -6907,6 +7169,10 @@
       }
 
       function handleRichImageUpload(event) {
+        if (isRestrictedAdminUser()) {
+          event.target.value = "";
+          return;
+        }
         const file = event.target.files && event.target.files[0];
         if (!file || !activeRichEditor) return;
         insertImageFileIntoEditor(file, activeRichEditor);
@@ -6914,6 +7180,7 @@
       }
 
       function insertImageFileIntoEditor(file, editor) {
+        if (isRestrictedAdminUser()) return;
         if (!file || !file.type.startsWith("image/")) return;
         readFileAsDataUrl(file).then(dataUrl => {
           restoreRichSelection();
@@ -6989,6 +7256,7 @@
       }
 
       function showRichToolbar(editor) {
+        if (isRestrictedAdminUser()) return;
         const rect = getSelectionRect() || editor.getBoundingClientRect();
         els.richToolbar.classList.add("is-visible");
         const toolbarWidth = Math.min(els.richToolbar.offsetWidth || 420, window.innerWidth - 16);
@@ -7030,6 +7298,7 @@
       }
 
       function selectRichImage(wrapper) {
+        if (isRestrictedAdminUser()) return;
         clearSelectedRichImage();
         selectedRichImage = wrapper;
         wrapper.classList.add("is-selected");
@@ -7043,6 +7312,7 @@
       }
 
       function handleGlobalDeleteImage(event) {
+        if (isRestrictedAdminUser()) return;
         if (!selectedRichImage) return;
         if (event.key !== "Delete" && event.key !== "Backspace") return;
         event.preventDefault();
@@ -7053,6 +7323,7 @@
       }
 
       function loadTemplateIntoCurrentPlan() {
+        if (blockRestrictedAdminAccess()) return;
         const plan = currentPlan();
         if (!plan) return;
         if (!confirm("Carregar o template padrão e substituir os dados do plano atual?")) return;
@@ -7991,6 +8262,7 @@
       }
 
       function exportJson() {
+        if (blockRestrictedAdminAccess()) return;
         const payload = {
           exportedAt: new Date().toISOString(),
           app: "Planos de Ação SST",
@@ -8008,6 +8280,10 @@
       }
 
       function importJson(event) {
+        if (blockRestrictedAdminAccess()) {
+          event.target.value = "";
+          return;
+        }
         const file = event.target.files && event.target.files[0];
         if (!file) return;
         const reader = new FileReader();
@@ -8096,6 +8372,7 @@
         const key = currentUser ? SHARED_STORAGE_KEY : STORAGE_KEY;
         localStorage.setItem(key, JSON.stringify(app));
         if (!isHydrating) lastLocalChangeAt = Date.now();
+        let pureActivitySave = false;
         if (!options.localOnly) {
           if (options.fullSave) pendingFullSave = true;
           if (options.deleteProfileId) pendingProfileDeletes.add(options.deleteProfileId);
@@ -8113,7 +8390,7 @@
           if (options.hiddenAdd) pendingHiddenAdds.add(options.hiddenAdd);
           if (options.hiddenRemove) pendingHiddenRemoves.add(options.hiddenRemove);
           if (options.profileId) dirtyProfileIds.add(options.profileId);
-          const pureActivitySave = options.activityId
+          pureActivitySave = options.activityId
             && !options.fullSave
             && !options.deleteProfileId
             && !options.deletePlanId
@@ -8127,7 +8404,8 @@
             dirtyProfileIds.add(app.activeProfileId);
           }
         }
-        if (!currentUser || !cloudReady || isHydrating || options.localOnly || !hasPendingCloudChanges()) return;
+        const restrictedActivityOnly = isRestrictedAdminUser() && pureActivitySave;
+        if (!currentUser || (isRestrictedAdminUser() && !restrictedActivityOnly) || !cloudReady || isHydrating || options.localOnly || !hasPendingCloudChanges()) return;
         scheduleCloudSave();
       }
 
@@ -8181,12 +8459,24 @@
         snapshot.hiddenRemoves.forEach(id => pendingHiddenRemoves.add(id));
       }
 
+      function snapshotHasOnlyActivity(snapshot) {
+        return !snapshot.fullSave
+          && !snapshot.profileIds.length
+          && !snapshot.deletedProfileIds.length
+          && !snapshot.deletedPlanIds.length
+          && !snapshot.deletedFolderIds.length
+          && !snapshot.deletedRows.length
+          && snapshot.activityIds.length > 0
+          && !snapshot.hiddenAdds.length
+          && !snapshot.hiddenRemoves.length;
+      }
+
       function scheduleCloudSave() {
         if (saveTimer) clearTimeout(saveTimer);
         saveTimer = setTimeout(() => {
           saveTimer = null;
           saveAppToCloud();
-        }, 5000);
+        }, 700);
         if (app.view === "editor") els.saveStatus.textContent = "Salvando no banco...";
       }
 
@@ -8212,6 +8502,10 @@
           && !snapshot.activityIds.length
           && !snapshot.hiddenAdds.length
           && !snapshot.hiddenRemoves.length) return;
+        if (isRestrictedAdminUser() && !snapshotHasOnlyActivity(snapshot)) {
+          clearPendingCloudSnapshot(snapshot);
+          return;
+        }
         isSavingCloud = true;
         clearPendingCloudSnapshot(snapshot);
         let savedCloudOk = false;
@@ -8450,15 +8744,7 @@
       function startSharedSync() {
         stopSharedSync();
         subscribeRealtime();
-
-        // Realtime é o mecanismo principal. O polling fica só como fallback leve.
-        syncTimer = setInterval(() => {
-          if (document.visibilityState === "visible") {
-            syncSharedStateFromCloud({ force: true }).catch(error => {
-              console.warn("Falha no fallback de sincronização:", error);
-            });
-          }
-        }, 300000);
+        syncTimer = setInterval(() => syncSharedStateFromCloud(), 10000);
       }
 
       function stopSharedSync() {
@@ -8482,13 +8768,22 @@
             if (!payload.new || payload.eventType === "DELETE") return;
             applyRemoteSharedState(payload.new).catch(error => console.warn("Falha ao aplicar atualização em tempo real:", error));
           })
+          .on("postgres_changes", {
+            event: "*",
+            schema: "public",
+            table: "user_profiles"
+          }, () => {
+            refreshTeamProfilesFromRealtime().catch(error => console.warn("Falha ao atualizar perfis em tempo real:", error));
+          })
           .on("presence", { event: "sync" }, () => {
             updateOnlineUsersFromPresence();
           })
           .subscribe(status => {
             if (status === "SUBSCRIBED" && currentUser && realtimeChannel) {
               realtimeChannel.track({
-                user_id: currentUser.id
+                user_id: currentUser.id,
+                email: currentUser.email || "",
+                online_at: new Date().toISOString()
               }).catch(error => console.warn("Falha ao registrar presença online:", error));
             }
             if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
@@ -8545,6 +8840,7 @@
         lastSharedUpdatedAt = row.updated_at || "";
         localStorage.setItem(SHARED_STORAGE_KEY, JSON.stringify(app));
         selectedActions.clear();
+        await loadTeamProfiles();
         renderApp();
         if (app.view === "editor") markSaved();
       }
