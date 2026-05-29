@@ -955,12 +955,28 @@
 
     .toolbar {
       display: grid;
-      grid-template-columns: 1.2fr repeat(3, minmax(150px, 0.42fr)) auto auto auto auto;
-      gap: 10px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 16px;
       align-items: end;
       padding: 18px 22px;
       border-bottom: 1px solid var(--line);
       background: #fff;
+    }
+
+    .toolbar-filters {
+      display: grid;
+      grid-template-columns: minmax(260px, 1.4fr) repeat(3, minmax(150px, 0.7fr));
+      gap: 10px;
+      align-items: end;
+      min-width: 0;
+    }
+
+    .toolbar-actions {
+      display: flex;
+      align-items: end;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 10px;
     }
 
     .toolbar label {
@@ -1868,11 +1884,15 @@
       }
 
       .toolbar {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: 1fr;
       }
 
-      .toolbar .button {
-        width: 100%;
+      .toolbar-actions {
+        justify-content: flex-start;
+      }
+
+      .toolbar-filters {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
 
@@ -2033,8 +2053,18 @@
         padding: 14px;
       }
 
+      .toolbar-filters {
+        grid-template-columns: 1fr;
+      }
+
+      .toolbar-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
       .toolbar .button {
         min-height: 42px;
+        width: 100%;
       }
 
       .bulkbar {
@@ -3733,55 +3763,63 @@
         </section>
 
         <section class="toolbar no-print" aria-label="Filtros e exportação">
-          <label>
-            Busca global
-            <input type="search" id="searchInput" placeholder="Buscar por ação, responsável, status, observação...">
-          </label>
-          <label>
-            Prioridade
-            <select id="priorityFilter">
-              <option value="">Todas</option>
-              <option value="Alta">Alta</option>
-              <option value="Média">Média</option>
-              <option value="Baixa">Baixa</option>
-            </select>
-          </label>
-          <label>
-            Status
-            <select id="statusFilter">
-              <option value="">Todos</option>
-              <option value="Não iniciado">Não iniciado</option>
-              <option value="Em andamento">Em andamento</option>
-              <option value="Concluído">Concluído</option>
-              <option value="Cancelado">Cancelado</option>
-            </select>
-          </label>
-          <label>
-            Responsável
-            <select id="responsibleFilter">
-              <option value="">Todos</option>
-            </select>
-          </label>
-          <button class="button" type="button" id="loadTemplateBtn" title="Substituir dados do plano atual pelo template padrão">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
-            Template
-          </button>
-          <button class="button" type="button" id="printBtn">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/></svg>
-            Exportar para PDF
-          </button>
-          <button class="button" type="button" id="exportJpegBtn">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-            Exportar JPEG
-          </button>
-          <button class="button" type="button" id="exportJsonBtn">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
-            Exportar JSON
-          </button>
-          <button class="button" type="button" id="importJsonBtn">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
-            Importar JSON
-          </button>
+          <div class="toolbar-filters">
+            <label>
+              Busca global
+              <input type="search" id="searchInput" placeholder="Buscar por ação, responsável, status, observação...">
+            </label>
+            <label>
+              Prioridade
+              <select id="priorityFilter">
+                <option value="">Todas</option>
+                <option value="Alta">Alta</option>
+                <option value="Média">Média</option>
+                <option value="Baixa">Baixa</option>
+              </select>
+            </label>
+            <label>
+              Status
+              <select id="statusFilter">
+                <option value="">Todos</option>
+                <option value="Não iniciado">Não iniciado</option>
+                <option value="Em andamento">Em andamento</option>
+                <option value="Concluído">Concluído</option>
+                <option value="Cancelado">Cancelado</option>
+              </select>
+            </label>
+            <label>
+              Responsável
+              <select id="responsibleFilter">
+                <option value="">Todos</option>
+              </select>
+            </label>
+          </div>
+          <div class="toolbar-actions">
+            <button class="button" type="button" id="loadTemplateBtn" title="Substituir dados do plano atual pelo template padrão">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+              Template
+            </button>
+            <button class="button" type="button" id="printBtn">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/></svg>
+              Exportar PDF
+            </button>
+            <button class="button" type="button" id="exportRtfBtn">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h6"/></svg>
+              Exportar RTF
+            </button>
+            <button class="button" type="button" id="exportJpegBtn">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+              Exportar JPEG
+            </button>
+            <button class="button" type="button" id="exportJsonBtn">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+              Exportar JSON
+            </button>
+            <button class="button" type="button" id="importJsonBtn">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+              Importar JSON
+            </button>
+          </div>
           <input id="importJsonInput" class="no-print" type="file" accept="application/json,.json" hidden>
         </section>
 
@@ -4697,6 +4735,7 @@
 
         document.getElementById("loadTemplateBtn").addEventListener("click", loadTemplateIntoCurrentPlan);
         document.getElementById("printBtn").addEventListener("click", exportExecutivePdf);
+        document.getElementById("exportRtfBtn").addEventListener("click", exportExecutiveRtf);
         document.getElementById("exportJpegBtn").addEventListener("click", exportExecutiveJpeg);
         document.getElementById("exportJsonBtn").addEventListener("click", exportJson);
         document.getElementById("importJsonBtn").addEventListener("click", () => {
@@ -7643,7 +7682,6 @@
         y = drawPdfActionsTable(doc, data.actions || [], y);
         y = drawPdfEquipmentTable(doc, data.equipment || [], y);
         y = drawPdfTrainingsTable(doc, data.trainings || [], y);
-        y = await drawPdfEvidence(doc, collectPdfEvidence(data), y);
         addPdfPageFooters(doc);
       }
 
@@ -7724,19 +7762,23 @@
       }
 
       function drawPdfActionsTable(doc, rows, startY) {
-        const body = rows.map((row, index) => [
-          String(index + 1),
-          richContentForPdf(row.actionHtml).text,
-          row.responsible || "-",
-          row.when || "-",
-          row.priority || "-",
-          row.status || "-",
-          richContentForPdf(row.observationHtml).text
-        ]);
+        const body = rows.map((row, index) => {
+          const observation = richContentForPdf(row.observationHtml, { imagePlaceholder: false });
+          return [
+            String(index + 1),
+            richContentForPdf(row.actionHtml).text,
+            row.responsible || "-",
+            row.when || "-",
+            row.priority || "-",
+            row.status || "-",
+            pdfCellWithImages(observation)
+          ];
+        });
         return drawPdfTable(doc, "Ações", ["Item", "Ação recomendada para implementar/manter", "Responsável", "Quando", "Prioridade", "Status", "Observação"], body, startY, {
           emptyText: "Nenhuma ação cadastrada.",
           priorityColumn: 4,
           statusColumn: 5,
+          imageColumn: 6,
           columnStyles: {
             0: { cellWidth: 11, halign: "center" },
             1: { cellWidth: 84 },
@@ -7750,16 +7792,20 @@
       }
 
       function drawPdfEquipmentTable(doc, rows, startY) {
-        const body = rows.map((row, index) => [
-          String(index + 1),
-          richContentForPdf(row.descriptionHtml).text,
-          row.responsible || "-",
-          row.status || "-",
-          richContentForPdf(row.observationHtml).text
-        ]);
+        const body = rows.map((row, index) => {
+          const observation = richContentForPdf(row.observationHtml, { imagePlaceholder: false });
+          return [
+            String(index + 1),
+            richContentForPdf(row.descriptionHtml).text,
+            row.responsible || "-",
+            row.status || "-",
+            pdfCellWithImages(observation)
+          ];
+        });
         return drawPdfTable(doc, "Equipamentos de emergência", ["Item", "Descrição", "Responsável", "Status", "Observação"], body, startY, {
           emptyText: "Nenhum equipamento cadastrado.",
           statusColumn: 3,
+          imageColumn: 4,
           columnStyles: {
             0: { cellWidth: 12, halign: "center" },
             1: { cellWidth: 115 },
@@ -7771,17 +7817,21 @@
       }
 
       function drawPdfTrainingsTable(doc, rows, startY) {
-        const body = rows.map((row, index) => [
-          String(index + 1),
-          richContentForPdf(row.trainingHtml).text,
-          row.responsible || "-",
-          row.when || "-",
-          row.status || "-",
-          richContentForPdf(row.observationHtml).text
-        ]);
+        const body = rows.map((row, index) => {
+          const observation = richContentForPdf(row.observationHtml, { imagePlaceholder: false });
+          return [
+            String(index + 1),
+            richContentForPdf(row.trainingHtml).text,
+            row.responsible || "-",
+            row.when || "-",
+            row.status || "-",
+            pdfCellWithImages(observation)
+          ];
+        });
         return drawPdfTable(doc, "Treinamentos", ["Item", "Treinamento", "Responsável", "Quando", "Status", "Observação"], body, startY, {
           emptyText: "Nenhum treinamento cadastrado.",
           statusColumn: 4,
+          imageColumn: 5,
           columnStyles: {
             0: { cellWidth: 12, halign: "center" },
             1: { cellWidth: 94 },
@@ -7789,6 +7839,51 @@
             3: { cellWidth: 44 },
             4: { cellWidth: 31, halign: "center" },
             5: { cellWidth: 58 }
+          }
+        });
+      }
+
+      function pdfCellWithImages(rich) {
+        if (!rich || !rich.images || !rich.images.length) return rich && rich.text ? rich.text : "-";
+        return {
+          content: rich.text === "-" ? "" : rich.text,
+          images: rich.images
+        };
+      }
+
+      function pdfCellImages(raw) {
+        return raw && typeof raw === "object" && Array.isArray(raw.images) ? raw.images : [];
+      }
+
+      function pdfCellContent(raw) {
+        return raw && typeof raw === "object" && "content" in raw ? raw.content : raw;
+      }
+
+      function drawPdfCellImages(doc, data, images) {
+        if (!images.length) return;
+        const padding = 1.6;
+        const gap = 1.6;
+        const columns = images.length > 1 ? 2 : 1;
+        const usableWidth = Math.max(8, data.cell.width - padding * 2);
+        const thumbWidth = (usableWidth - gap * (columns - 1)) / columns;
+        const textLines = (data.cell.text || []).filter(Boolean);
+        const textHeight = textLines.length ? textLines.length * 3.1 + 1.5 : 0;
+        let imageY = data.cell.y + padding + textHeight;
+
+        images.slice(0, 4).forEach((src, index) => {
+          const column = index % columns;
+          const row = Math.floor(index / columns);
+          const imageX = data.cell.x + padding + column * (thumbWidth + gap);
+          const rowY = imageY + row * 18.5;
+          try {
+            const props = doc.getImageProperties(src);
+            const fit = fitPdfImage(props.width, props.height, thumbWidth, 17);
+            doc.addImage(src, pdfImageFormat(src), imageX + Math.max(0, (thumbWidth - fit.width) / 2), rowY, fit.width, fit.height);
+          } catch (error) {
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(6);
+            doc.setTextColor(100, 116, 139);
+            doc.text("Imagem não suportada.", imageX, rowY + 5);
           }
         });
       }
@@ -7826,78 +7921,35 @@
             if (data.section !== "body") return;
             if (data.column.index === options.priorityColumn) applyPdfTone(data.cell, pdfPriorityTone(data.cell.raw));
             if (data.column.index === options.statusColumn) applyPdfTone(data.cell, pdfStatusTone(data.cell.raw));
+            if (data.column.index === options.imageColumn) {
+              const images = pdfCellImages(data.cell.raw);
+              if (images.length) {
+                const textLines = Array.isArray(data.cell.text)
+                  ? data.cell.text.filter(Boolean).length
+                  : String(pdfCellContent(data.cell.raw) || "").split(/\n+/).filter(Boolean).length;
+                const imageRows = Math.ceil(Math.min(images.length, 4) / (images.length > 1 ? 2 : 1));
+                data.cell.styles.minCellHeight = Math.max(data.cell.styles.minCellHeight || 0, 5 + textLines * 3.2 + imageRows * 18.5);
+              }
+            }
+          },
+          didDrawCell: data => {
+            if (data.section !== "body" || data.column.index !== options.imageColumn) return;
+            drawPdfCellImages(doc, data, pdfCellImages(data.cell.raw));
           }
         });
         return doc.lastAutoTable.finalY + 7;
       }
 
-      async function drawPdfEvidence(doc, evidence, startY) {
-        if (!evidence.length) return startY;
-        let y = drawPdfSectionTitle(doc, "Evidências com imagens anexadas", startY);
-        const margin = 10;
-        const gap = 5;
-        const cardWidth = (pdfPageWidth(doc) - margin * 2 - gap) / 2;
-        const cardHeight = 54;
-        let column = 0;
-        for (const item of evidence) {
-          const image = await loadPdfImage(item.src);
-          if (!image) continue;
-          if (column === 0) y = ensurePdfSpace(doc, y, cardHeight + 4);
-          const x = margin + column * (cardWidth + gap);
-          doc.setFillColor(248, 250, 252);
-          doc.setDrawColor(203, 213, 225);
-          doc.roundedRect(x, y, cardWidth, cardHeight, 2, 2, "FD");
-          doc.setTextColor(15, 23, 42);
-          doc.setFont("helvetica", "bold");
-          doc.setFontSize(7.5);
-          doc.text(pdfTrim(`${item.section} | Item ${item.item} | ${item.field}`, 65), x + 3, y + 5);
-          const fit = fitPdfImage(image.width, image.height, cardWidth - 6, 38);
-          const imageX = x + 3 + Math.max(0, (cardWidth - 6 - fit.width) / 2);
-          const imageY = y + 10;
-          try {
-            doc.addImage(item.src, image.format, imageX, imageY, fit.width, fit.height);
-          } catch (error) {
-            doc.setFont("helvetica", "normal");
-            doc.setTextColor(100, 116, 139);
-            doc.text("Imagem não suportada neste PDF.", x + 3, imageY + 8);
-          }
-          column += 1;
-          if (column >= 2) {
-            column = 0;
-            y += cardHeight + 5;
-          }
-        }
-        return column ? y + cardHeight + 5 : y;
-      }
-
-      function collectPdfEvidence(data) {
-        const evidence = [];
-        const add = (section, item, field, html) => {
-          const rich = richContentForPdf(html);
-          rich.images.forEach((src, index) => evidence.push({ section, item, field: index ? `${field} ${index + 1}` : field, src }));
-        };
-        (data.actions || []).forEach((row, index) => {
-          add("Ações", index + 1, "Ação recomendada", row.actionHtml);
-          add("Ações", index + 1, "Observação", row.observationHtml);
-        });
-        (data.equipment || []).forEach((row, index) => {
-          add("Equipamentos", index + 1, "Descrição", row.descriptionHtml);
-          add("Equipamentos", index + 1, "Observação", row.observationHtml);
-        });
-        (data.trainings || []).forEach((row, index) => {
-          add("Treinamentos", index + 1, "Treinamento", row.trainingHtml);
-          add("Treinamentos", index + 1, "Observação", row.observationHtml);
-        });
-        return evidence;
-      }
-
-      function richContentForPdf(value) {
+      function richContentForPdf(value, options = {}) {
         const template = document.createElement("template");
         template.innerHTML = sanitizeRichHtml(value || "");
+        const useImagePlaceholder = options.imagePlaceholder !== false;
         const images = [...template.content.querySelectorAll("img")]
           .map(image => image.getAttribute("src"))
           .filter(src => /^data:image\//i.test(src || ""));
-        template.content.querySelectorAll("img").forEach(image => image.replaceWith(document.createTextNode("[imagem anexada]")));
+        template.content.querySelectorAll("img").forEach(image => {
+          image.replaceWith(useImagePlaceholder ? document.createTextNode("[imagem anexada]") : document.createTextNode(""));
+        });
         template.content.querySelectorAll("br").forEach(br => br.replaceWith(document.createTextNode("\n")));
         template.content.querySelectorAll("p, div, li").forEach(node => node.appendChild(document.createTextNode("\n")));
         const text = (template.content.textContent || "")
@@ -8063,6 +8115,186 @@
           .trim();
       }
 
+      async function exportExecutiveRtf() {
+        const plan = currentPlan();
+        if (!plan) return alert("Abra um plano de ação antes de exportar o RTF.");
+        const meta = plan.data && plan.data.meta ? plan.data.meta : {};
+        const button = document.getElementById("exportRtfBtn");
+        const originalLabel = button ? button.innerHTML : "";
+        if (button) {
+          button.disabled = true;
+          button.innerHTML = "Gerando RTF...";
+        }
+
+        try {
+          const rtf = await buildExecutiveRtf(plan);
+          const blob = new Blob([rtf], { type: "application/rtf;charset=utf-8" });
+          downloadBlob(blob, executiveRtfFileName(meta.company || plan.company || plan.title));
+        } catch (error) {
+          console.error(error);
+          alert("Não foi possível gerar o RTF. Verifique se há imagens muito grandes e tente novamente.");
+        } finally {
+          if (button) {
+            button.disabled = false;
+            button.innerHTML = originalLabel;
+          }
+        }
+      }
+
+      async function buildExecutiveRtf(plan, options = {}) {
+        const data = plan.data || { meta: {}, actions: [], equipment: [], trainings: [] };
+        const meta = data.meta || {};
+        const stats = getExecutiveStats(plan);
+        const company = meta.company || plan.company || "-";
+        const documentName = meta.documentName || plan.documentType || "-";
+        const chunks = [
+          "{\\rtf1\\ansi\\ansicpg1252\\deff0{\\fonttbl{\\f0 Arial;}}",
+          "\\viewkind4\\uc1\\landscape\\paperw16838\\paperh11906\\margl567\\margr567\\margt567\\margb567\\f0\\fs18\n",
+          `\\pard\\qc\\b\\fs30 ${rtfEscape("CRONOGRAMA DE AÇÕES SST")}\\b0\\fs18\\par\n`,
+          `\\pard\\qc ${rtfEscape(`${plan.title || "Plano de ação"}${company && company !== "-" ? " - " + company : ""}`)}\\par\n`
+        ];
+
+        chunks.push(rtfTableRow(["Empresa", "Documento", "Criação / Revisão", "Responsável técnico / setor"].map(rtfEscape), [3925, 3925, 3925, 3925], true));
+        chunks.push(rtfTableRow([company, documentName, meta.revisionDate || "-", meta.technicalOwner || "-"].map(rtfPlainCell), [3925, 3925, 3925, 3925]));
+        chunks.push(`\\pard\\sb160\\b ${rtfEscape("Descrição")}\\b0\\par\n`);
+        chunks.push(`\\pard ${rtfEscape(richContentForPdf(meta.description || DEFAULT_DESCRIPTION).text)}\\par\n`);
+
+        chunks.push(`\\pard\\sb160\\b ${rtfEscape("Resumo")}\\b0\\par\n`);
+        chunks.push(rtfTableRow(["Total de ações", "Não iniciadas", "Em andamento", "Concluídas", "Progresso geral", "Alta prioridade aberta"].map(rtfEscape), [2616, 2616, 2616, 2616, 2616, 2620], true));
+        chunks.push(rtfTableRow([
+          String(stats.total),
+          `${stats.notStarted} (${pct(stats.notStarted, stats.total)})`,
+          `${stats.inProgress} (${pct(stats.inProgress, stats.total)})`,
+          `${stats.done} (${pct(stats.done, stats.total)})`,
+          `${stats.progress}%`,
+          String(stats.highOpen)
+        ].map(rtfPlainCell), [2616, 2616, 2616, 2616, 2616, 2620]));
+        chunks.push(`\\pard\\fs16 ${rtfEscape(`Última edição do plano: ${formatDateTime(plan.updatedAt)}`)}\\fs18\\par\n`);
+
+        await appendRtfTable(chunks, "Ações", ["Item", "Ação recomendada", "Responsável", "Quando", "Prioridade", "Status", "Observação"], await Promise.all((data.actions || []).map(async (row, index) => [
+          rtfPlainCell(index + 1),
+          await rtfRichCell(row.actionHtml),
+          rtfPlainCell(row.responsible || "-"),
+          rtfPlainCell(row.when || "-"),
+          rtfPlainCell(row.priority || "-"),
+          rtfPlainCell(row.status || "-"),
+          await rtfRichCell(row.observationHtml, { images: true })
+        ])), [700, 5200, 1800, 2100, 1400, 1700, 2800], options);
+
+        await appendRtfTable(chunks, "Equipamentos de emergência", ["Item", "Descrição", "Responsável", "Status", "Observação"], await Promise.all((data.equipment || []).map(async (row, index) => [
+          rtfPlainCell(index + 1),
+          await rtfRichCell(row.descriptionHtml),
+          rtfPlainCell(row.responsible || "-"),
+          rtfPlainCell(row.status || "-"),
+          await rtfRichCell(row.observationHtml, { images: true })
+        ])), [800, 6500, 2400, 2000, 4000], options);
+
+        await appendRtfTable(chunks, "Treinamentos", ["Item", "Treinamento", "Responsável", "Quando", "Status", "Observação"], await Promise.all((data.trainings || []).map(async (row, index) => [
+          rtfPlainCell(index + 1),
+          await rtfRichCell(row.trainingHtml),
+          rtfPlainCell(row.responsible || "-"),
+          rtfPlainCell(row.when || "-"),
+          rtfPlainCell(row.status || "-"),
+          await rtfRichCell(row.observationHtml, { images: true })
+        ])), [800, 5200, 2200, 2500, 2000, 3000], options);
+
+        chunks.push("}");
+        return chunks.join("");
+      }
+
+      async function appendRtfTable(chunks, title, headers, rows, widths, options = {}) {
+        const usePageBreaks = options.pageBreaks === true;
+        const rowsPerPage = 16;
+        chunks.push(`\\pard\\sb220\\b\\fs22 ${rtfEscape(String(title || "").toUpperCase())}\\b0\\fs18\\par\n`);
+        if (!rows.length) {
+          chunks.push(`\\pard ${rtfEscape("Nenhum registro cadastrado.")}\\par\n`);
+          return;
+        }
+        chunks.push(rtfTableRow(headers.map(rtfEscape), widths, true));
+        rows.forEach((row, index) => {
+          if (usePageBreaks && index > 0 && index % rowsPerPage === 0) {
+            chunks.push("\\page\n");
+            chunks.push(`\\pard\\sb120\\b\\fs22 ${rtfEscape(String(title || "").toUpperCase())} ${rtfEscape("(continuação)")}\\b0\\fs18\\par\n`);
+            chunks.push(rtfTableRow(headers.map(rtfEscape), widths, true));
+          }
+          chunks.push(rtfTableRow(row, widths));
+        });
+      }
+
+      function rtfTableRow(cells, widths, isHeader = false) {
+        let position = 0;
+        let row = "\\trowd\\trgaph70\\trleft0";
+        widths.forEach(width => {
+          position += width;
+          row += "\\clbrdrt\\brdrs\\brdrw10\\clbrdrl\\brdrs\\brdrw10\\clbrdrb\\brdrs\\brdrw10\\clbrdrr\\brdrs\\brdrw10\\clvertalt";
+          row += `\\cellx${position}`;
+        });
+        cells.forEach(cell => {
+          row += `\\pard\\intbl\\fs16${isHeader ? "\\b" : ""} ${cell || rtfEscape("-")}${isHeader ? "\\b0" : ""}\\cell`;
+        });
+        return row + "\\row\n";
+      }
+
+      async function rtfRichCell(value, options = {}) {
+        const rich = richContentForPdf(value, { imagePlaceholder: !options.images });
+        const parts = [];
+        if (rich.text && rich.text !== "-") parts.push(rtfEscape(rich.text));
+        if (options.images) {
+          for (const src of rich.images.slice(0, 4)) {
+            const pict = await rtfImage(src, 2200, 1000);
+            if (pict) parts.push(`\\line ${pict}`);
+          }
+        }
+        return parts.join("") || rtfEscape("-");
+      }
+
+      function rtfPlainCell(value) {
+        return rtfEscape(pdfText(value));
+      }
+
+      async function rtfImage(src, maxWidthTwips, maxHeightTwips) {
+        if (!/^data:image\/(png|jpe?g)/i.test(src || "")) return "";
+        const image = await loadPdfImage(src);
+        if (!image) return "";
+        const fit = fitPdfImage(image.width, image.height, maxWidthTwips, maxHeightTwips);
+        const blip = /^data:image\/png/i.test(src) ? "pngblip" : "jpegblip";
+        const hex = dataUrlToHex(src);
+        if (!hex) return "";
+        return `{\\pict\\${blip}\\picw${Math.round(image.width)}\\pich${Math.round(image.height)}\\picwgoal${Math.round(fit.width)}\\pichgoal${Math.round(fit.height)} ${hex}}`;
+      }
+
+      function dataUrlToHex(dataUrl) {
+        const base64 = String(dataUrl || "").split(",")[1] || "";
+        if (!base64) return "";
+        const binary = atob(base64);
+        let hex = "";
+        for (let index = 0; index < binary.length; index += 1) {
+          hex += binary.charCodeAt(index).toString(16).padStart(2, "0");
+        }
+        return hex;
+      }
+
+      function rtfEscape(value) {
+        const text = String(value == null ? "" : value).replace(/\r/g, "").replace(/\t/g, " ");
+        let escaped = "";
+        for (let index = 0; index < text.length; index += 1) {
+          const char = text[index];
+          const code = text.charCodeAt(index);
+          if (char === "\\") escaped += "\\\\";
+          else if (char === "{") escaped += "\\{";
+          else if (char === "}") escaped += "\\}";
+          else if (char === "\n") escaped += "\\line ";
+          else if (code > 127) escaped += `\\u${code > 32767 ? code - 65536 : code}?`;
+          else escaped += char;
+        }
+        return escaped;
+      }
+
+      function executiveRtfFileName(company) {
+        const safeCompany = sanitizeFileName(String(company || "SEM EMPRESA").trim().toUpperCase()) || "SEM EMPRESA";
+        return `CRONOGRAMA DE AÇÕES - ${safeCompany}.rtf`;
+      }
+
       async function exportExecutiveJpeg() {
         const plan = currentPlan();
         if (!plan) return alert("Abra um plano de ação antes de exportar o JPEG.");
@@ -8098,22 +8330,45 @@
 
       async function buildExecutiveJpegPages(plan) {
         const data = plan.data || { meta: {}, actions: [], equipment: [], trainings: [] };
-        const evidenceItems = await loadJpegEvidenceImages(collectPdfEvidence(data));
+        const preparedPlan = {
+          ...plan,
+          data: await prepareJpegExportData(data)
+        };
         const pages = [
-          await buildJpegSectionPage(plan, "Cronograma de ações e ações", "JPEG 1 - CRONOGRAMA DE AÇÕES E AÇÕES", drawJpegActionsPage),
-          await buildJpegSectionPage(plan, "Equipamento de emergência e treinamentos", "JPEG 2 - EQUIPAMENTO DE EMERGÊNCIA E TREINAMENTOS", drawJpegEquipmentTrainingPage)
+          await buildJpegSectionPage(preparedPlan, "Cronograma de ações e ações", "JPEG 1 - CRONOGRAMA DE AÇÕES E AÇÕES", drawJpegActionsPage),
+          await buildJpegSectionPage(preparedPlan, "Equipamento de emergência e treinamentos", "JPEG 2 - EQUIPAMENTO DE EMERGÊNCIA E TREINAMENTOS", drawJpegEquipmentTrainingPage)
         ];
 
-        if (evidenceItems.length) {
-          pages.push(await buildJpegSectionPage(
-            plan,
-            "Evidências com imagens",
-            "JPEG 3 - EVIDÊNCIAS COM IMAGENS",
-            (ctx, currentY, measureOnly, context) => drawJpegEvidencePage(ctx, currentY, measureOnly, context, evidenceItems)
-          ));
-        }
-
         return pages;
+      }
+
+      async function prepareJpegExportData(data) {
+        const actions = await Promise.all((data.actions || []).map(async row => ({
+          ...row,
+          _jpegAction: await richContentForJpeg(row.actionHtml),
+          _jpegObservation: await richContentForJpeg(row.observationHtml, { imagePlaceholder: false })
+        })));
+        const equipment = await Promise.all((data.equipment || []).map(async row => ({
+          ...row,
+          _jpegDescription: await richContentForJpeg(row.descriptionHtml),
+          _jpegObservation: await richContentForJpeg(row.observationHtml, { imagePlaceholder: false })
+        })));
+        const trainings = await Promise.all((data.trainings || []).map(async row => ({
+          ...row,
+          _jpegTraining: await richContentForJpeg(row.trainingHtml),
+          _jpegObservation: await richContentForJpeg(row.observationHtml, { imagePlaceholder: false })
+        })));
+
+        return { ...data, actions, equipment, trainings };
+      }
+
+      async function richContentForJpeg(value, options = {}) {
+        const rich = richContentForPdf(value, options);
+        const items = await loadJpegEvidenceImages(rich.images.map(src => ({ src })));
+        return {
+          text: rich.text,
+          images: items.filter(item => item.image).map(item => item.image)
+        };
       }
 
       async function buildJpegSectionPage(plan, title, fileSuffix, drawBody) {
@@ -8181,12 +8436,12 @@
           ["Item", "Ação recomendada", "Responsável", "Quando", "Prioridade", "Status", "Observação"],
           ...(data.actions || []).map((row, index) => [
             String(index + 1),
-            richContentForPdf(row.actionHtml).text,
+            jpegCellFromRich(row._jpegAction || richContentForPdf(row.actionHtml)),
             row.responsible || "-",
             row.when || "-",
             row.priority || "-",
             row.status || "-",
-            richContentForPdf(row.observationHtml).text
+            jpegCellFromRich(row._jpegObservation || richContentForPdf(row.observationHtml, { imagePlaceholder: false }))
           ])
         ], margin, y + 18, [66, 484, 160, 178, 132, 154, 298], measureOnly);
       }
@@ -8197,10 +8452,10 @@
           ["Item", "Descrição", "Responsável", "Status", "Observação"],
           ...(data.equipment || []).map((row, index) => [
             String(index + 1),
-            richContentForPdf(row.descriptionHtml).text,
+            jpegCellFromRich(row._jpegDescription || richContentForPdf(row.descriptionHtml)),
             row.responsible || "-",
             row.status || "-",
-            richContentForPdf(row.observationHtml).text
+            jpegCellFromRich(row._jpegObservation || richContentForPdf(row.observationHtml, { imagePlaceholder: false }))
           ])
         ], margin, y + 18, [66, 620, 220, 170, 392], measureOnly);
 
@@ -8208,18 +8463,13 @@
           ["Item", "Treinamento", "Responsável", "Quando", "Status", "Observação"],
           ...(data.trainings || []).map((row, index) => [
             String(index + 1),
-            richContentForPdf(row.trainingHtml).text,
+            jpegCellFromRich(row._jpegTraining || richContentForPdf(row.trainingHtml)),
             row.responsible || "-",
             row.when || "-",
             row.status || "-",
-            richContentForPdf(row.observationHtml).text
+            jpegCellFromRich(row._jpegObservation || richContentForPdf(row.observationHtml, { imagePlaceholder: false }))
           ])
         ], margin, y + 18, [66, 470, 210, 220, 170, 332], measureOnly);
-      }
-
-      function drawJpegEvidencePage(ctx, y, measureOnly, context, evidenceItems) {
-        const { margin, contentWidth } = context;
-        return drawJpegEvidence(ctx, evidenceItems, margin, y + 18, contentWidth, measureOnly);
       }
 
       function drawJpegSectionFooter(ctx, width, margin) {
@@ -8303,6 +8553,45 @@
         return y + height;
       }
 
+      function jpegCellFromRich(rich) {
+        const images = (rich && rich.images ? rich.images : []).filter(image => image && typeof image === "object" && "naturalWidth" in image);
+        if (!rich || !images.length) return rich && rich.text ? rich.text : "-";
+        return {
+          content: rich.text === "-" ? "" : rich.text,
+          images
+        };
+      }
+
+      function jpegCellText(cell) {
+        return cell && typeof cell === "object" && !Array.isArray(cell) && "content" in cell ? cell.content : cell;
+      }
+
+      function jpegCellImages(cell) {
+        return cell && typeof cell === "object" && !Array.isArray(cell) && Array.isArray(cell.images) ? cell.images : [];
+      }
+
+      function jpegCellDisplayText(cell) {
+        const text = jpegCellText(cell);
+        if ((!text || text === "-") && jpegCellImages(cell).length) return "";
+        return pdfText(text);
+      }
+
+      function drawJpegCellImages(ctx, images, x, y, width, height) {
+        if (!images.length || height <= 8) return;
+        const columns = images.length > 1 ? 2 : 1;
+        const gap = 8;
+        const thumbWidth = (width - gap * (columns - 1)) / columns;
+        const rowHeight = Math.min(92, Math.max(52, height / Math.ceil(Math.min(images.length, 4) / columns)));
+
+        images.slice(0, 4).forEach((image, index) => {
+          const column = index % columns;
+          const row = Math.floor(index / columns);
+          const ix = x + column * (thumbWidth + gap);
+          const iy = y + row * (rowHeight + 6);
+          drawImageContained(ctx, image, ix, iy, thumbWidth, rowHeight);
+        });
+      }
+
       function drawJpegTable(ctx, title, rows, x, y, widths, measureOnly) {
         const tableWidth = widths.reduce((sum, value) => sum + value, 0);
         const lineHeight = 20;
@@ -8326,7 +8615,12 @@
           if (rowIndex === 0) return headerHeight;
           return Math.max(56, Math.max(...row.map((cell, index) => {
             const maxLines = index === 1 ? 8 : index === row.length - 1 ? 5 : 3;
-            return Math.min(maxLines, wrapCanvasText(ctx, pdfText(cell), widths[index] - cellPadding * 2).length) * lineHeight + cellPadding * 2;
+            const displayText = jpegCellDisplayText(cell);
+            const textLines = displayText ? wrapCanvasText(ctx, displayText, widths[index] - cellPadding * 2) : [];
+            const imageCount = jpegCellImages(cell).length;
+            const imageRows = imageCount ? Math.ceil(Math.min(imageCount, 4) / (imageCount > 1 ? 2 : 1)) : 0;
+            const imageHeight = imageRows ? imageRows * 98 + 8 : 0;
+            return Math.min(maxLines, textLines.length) * lineHeight + cellPadding * 2 + imageHeight;
           })));
         });
         if (!measureOnly && rows.length === 1) {
@@ -8353,42 +8647,21 @@
               ctx.strokeRect(cursorX, cursorY, cellWidth, rowHeight);
               ctx.fillStyle = isHeader ? "#ffffff" : tone ? tone.text : "#1e293b";
               ctx.font = isHeader || tone ? "800 14px Segoe UI, Arial, sans-serif" : "600 14px Segoe UI, Arial, sans-serif";
-              drawCanvasTextBlock(ctx, pdfText(cell), cursorX + cellPadding, cursorY + 24, cellWidth - cellPadding * 2, lineHeight, isHeader ? 2 : colIndex === 1 ? 8 : colIndex === row.length - 1 ? 5 : 3);
+              const maxLines = isHeader ? 2 : colIndex === 1 ? 8 : colIndex === row.length - 1 ? 5 : 3;
+              const displayText = jpegCellDisplayText(cell);
+              const textBlockBottom = displayText
+                ? drawCanvasTextBlock(ctx, displayText, cursorX + cellPadding, cursorY + 24, cellWidth - cellPadding * 2, lineHeight, maxLines)
+                : cursorY + cellPadding;
+              const images = jpegCellImages(cell);
+              if (images.length) {
+                drawJpegCellImages(ctx, images, cursorX + cellPadding, textBlockBottom + 8, cellWidth - cellPadding * 2, rowHeight - (textBlockBottom - cursorY) - cellPadding);
+              }
             }
             cursorX += cellWidth;
           });
           cursorY += rowHeight;
         });
         return cursorY;
-      }
-
-      function drawJpegEvidence(ctx, evidenceItems, x, y, width, measureOnly) {
-        if (!measureOnly) {
-          ctx.fillStyle = "#0f172a";
-          ctx.font = "900 22px Segoe UI, Arial, sans-serif";
-          ctx.fillText("EVIDÊNCIAS COM IMAGENS", x, y + 24);
-        }
-        y += 42;
-        const gap = 16;
-        const columns = 3;
-        const cardWidth = (width - gap * (columns - 1)) / columns;
-        const cardHeight = 248;
-        evidenceItems.forEach((item, index) => {
-          const col = index % columns;
-          const row = Math.floor(index / columns);
-          const cx = x + col * (cardWidth + gap);
-          const cy = y + row * (cardHeight + gap);
-          if (!measureOnly) {
-            ctx.fillStyle = "#f8fafc";
-            ctx.strokeStyle = "#cbd5e1";
-            canvasRoundRect(ctx, cx, cy, cardWidth, cardHeight, 10, true, true);
-            ctx.fillStyle = "#334155";
-            ctx.font = "800 14px Segoe UI, Arial, sans-serif";
-            drawCanvasTextBlock(ctx, `${item.section} | Item ${item.item} | ${item.field}`, cx + 14, cy + 24, cardWidth - 28, 17, 2);
-            if (item.image) drawImageContained(ctx, item.image, cx + 14, cy + 58, cardWidth - 28, cardHeight - 74);
-          }
-        });
-        return y + Math.ceil(evidenceItems.length / columns) * (cardHeight + gap);
       }
 
       function jpegPriorityTone(value) {
